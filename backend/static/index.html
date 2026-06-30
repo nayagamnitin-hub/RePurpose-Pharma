@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RePurpose · evidence-based treatment ideas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark">✚</span> RePurpose
+      </a>
+      <nav class="header-nav">
+        <a href="#how">How it works</a>
+        <a class="btn btn-ghost" href="#search-anchor">Start exploring</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero / search -->
+  <section class="hero" id="search-anchor">
+    <div class="wrap hero-inner">
+      <p class="eyebrow">AI research assistant · hypothesis generation</p>
+      <h1>The treatment ideas you've been<br><span class="accent">searching for.</span></h1>
+      <p class="hero-sub">
+        Type a condition or a goal, in plain English. We map the biology, then surface the
+        established treatments <em>and</em> the investigational drugs being studied right now.
+      </p>
+
+      <form id="search-form" class="search-bar">
+        <input id="search-input" type="text" autocomplete="off"
+               placeholder="e.g. how to lose body weight, Alzheimer's disease, grow taller…" />
+        <button type="submit" class="btn btn-primary">Analyze</button>
+      </form>
+
+      <div class="pills" id="category-pills"></div>
+      <p class="disclaimer-mini">Research &amp; education only. Not medical advice.</p>
+    </div>
+  </section>
+
+  <!-- Landing content (hidden after search) -->
+  <main id="landing" class="wrap">
+    <section class="section">
+      <h2 class="section-title">Popular explorations</h2>
+      <p class="section-sub">Tap one to see established options and what's in the pipeline.</p>
+      <div class="card-grid" id="popular-grid"></div>
+    </section>
+
+    <section class="section how" id="how">
+      <h2 class="section-title">How it works</h2>
+      <div class="how-grid">
+        <div class="how-step"><span class="how-num">1</span><h3>Describe a goal</h3><p>Any condition or plain-language goal, and we interpret the underlying biology and targets.</p></div>
+        <div class="how-step"><span class="how-num">2</span><h3>See real options</h3><p>Established, approved treatments first, then investigational drugs from active clinical trials.</p></div>
+        <div class="how-step"><span class="how-num">3</span><h3>Check the evidence</h3><p>Effectiveness, safety and confidence scores, with PubMed studies and an AI you can question.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Results (revealed after search) -->
+  <main id="results" class="wrap hidden">
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p id="loading-text">Analyzing across Open Targets, ClinicalTrials.gov, UniProt &amp; PubMed…</p>
+    </div>
+
+    <div id="report" class="hidden">
+      <button id="back-btn" class="btn btn-ghost back-btn">← New search</button>
+
+      <header class="result-head">
+        <p class="eyebrow" id="result-eyebrow"></p>
+        <h2 id="result-title"></h2>
+        <p class="result-rationale" id="result-rationale"></p>
+        <div class="chips" id="target-chips"></div>
+      </header>
+
+      <section class="summary-card" id="summary-card"></section>
+
+      <section class="section">
+        <h2 class="section-title">Established treatments</h2>
+        <p class="section-sub">Approved or established options that act in the right direction for this goal.</p>
+        <div id="existing-featured" class="featured-grid"></div>
+        <div id="existing-rest" class="card-grid drug-grid"></div>
+        <p id="existing-empty" class="empty hidden">No established treatments matched.</p>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Repurposing &amp; in-development candidates</h2>
+        <p class="section-sub">Drugs from other uses, and real investigational agents in active clinical trials, promising but not yet established here.</p>
+        <div id="repurposing-grid" class="card-grid drug-grid"></div>
+        <p id="repurposing-empty" class="empty hidden">No repurposing candidates found.</p>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Targets explored</h2>
+        <div class="chips" id="all-target-chips"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p class="foot-brand"><span class="brand-mark">✚</span> RePurpose</p>
+      <p class="foot-disc">
+        This tool generates research hypotheses from public data sources (Open Targets,
+        ClinicalTrials.gov, UniProt, ChEMBL, PubMed) and AI reasoning. It is for research and
+        educational exploration only and is <strong>not medical advice</strong>. Always consult a
+        qualified clinician.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Drug detail modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
