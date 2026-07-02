@@ -1,0 +1,23 @@
+# Render Blueprint — deploys the RePurpose FastAPI site (the custom UI + API).
+# Render reads this automatically when you create a "Blueprint" from the repo.
+services:
+  - type: web
+    name: repurpose
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: LLM_PROVIDER
+        value: groq
+      # Secret — you paste your Groq key in the Render dashboard (never stored in the repo)
+      - key: LLM_API_KEY
+        sync: false
+      - key: NCBI_TOOL
+        value: ai-drug-repurposing
+      - key: NCBI_EMAIL
+        value: subbu.g@gmail.com

@@ -1,0 +1,8 @@
+# Dependencies for the FastAPI web app (the custom RePurpose site).
+# Streamlit is intentionally excluded here — it's only for the legacy backup UI.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0

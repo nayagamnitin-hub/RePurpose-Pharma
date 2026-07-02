@@ -473,29 +473,36 @@ _CANON_SYSTEM = (
 
 
 def _canonicalize(names: list[str], goal: str, provider) -> dict[str, dict]:
-    """name -> {family, display, is_drug, established} via the live model."""
-    uniq = sorted({n for n in names if n})
+    """name -> {family, display, is_drug, established} via the live model.
+
+    This one call drives grouping, non-drug filtering and 'established for goal' promotion, so a
+    silent failure degrades everything. We retry once rather than losing it all.
+    """
+    uniq = sorted({n for n in names if n})[:90]
     if not provider.live or not uniq:
         return {}
     prompt = (f'GOAL: {goal}\n\nReturn JSON mapping each EXACT input name to '
               '{"family":"..","display":"..","is_drug":true|false,"established":true|false}.\n'
-              "Names:\n" + json.dumps(uniq[:120]))
-    try:
-        raw = provider.complete(_CANON_SYSTEM, prompt, temperature=0.0)
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(match.group(0) if match else raw)
-        out: dict[str, dict] = {}
-        for n, v in data.items():
-            if isinstance(v, dict):
-                out[n] = {
-                    "family": str(v.get("family", "")).strip().lower(),
-                    "display": (v.get("display") or "").strip(),
-                    "is_drug": bool(v.get("is_drug", True)),
-                    "established": bool(v.get("established", False)),
-                }
-        return out
-    except Exception:
-        return {}
+              "Names:\n" + json.dumps(uniq))
+    for _ in range(2):
+        try:
+            raw = provider.complete(_CANON_SYSTEM, prompt, temperature=0.0)
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            data = json.loads(match.group(0) if match else raw)
+            out: dict[str, dict] = {}
+            for n, v in data.items():
+                if isinstance(v, dict):
+                    out[n] = {
+                        "family": str(v.get("family", "")).strip().lower(),
+                        "display": (v.get("display") or "").strip(),
+                        "is_drug": bool(v.get("is_drug", True)),
+                        "established": bool(v.get("established", False)),
+                    }
+            if out:
+                return out
+        except Exception:
+            continue
+    return {}
 
 
 def _dedupe_by_ingredient(existing: list[DrugCandidate], repurposing: list[DrugCandidate], goal: str, provider):
