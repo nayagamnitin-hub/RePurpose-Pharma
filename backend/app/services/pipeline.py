@@ -511,10 +511,23 @@ def _dedupe_by_ingredient(existing: list[DrugCandidate], repurposing: list[DrugC
     variant names are kept on the card for the detail popup. Database drugs are always treated as
     real drugs (never dropped as 'not a drug')."""
     info = _canonicalize([c.name for c in existing + repurposing], goal, provider)
+    # known ingredient families the model returned (used to reconcile names it missed)
+    families = sorted({d["family"] for d in info.values() if d.get("family") and len(d["family"]) >= 4},
+                      key=len, reverse=True)
 
     def famkey(c: DrugCandidate) -> str:
         d = info.get(c.name)
-        return (d["family"] if d and d.get("family") else "") or _norm(c.name)
+        if d and d.get("family"):
+            return d["family"]
+        # Not covered by the model. Attach to a known family if the drug name contains that
+        # ingredient as a whole word, so e.g. "Minoxidil solution" / "Topical minoxidil 5%"
+        # group with "minoxidil". Guard against 'insulin' matching 'insulin-like growth factor'.
+        name_l = c.name.lower()
+        for fam in families:
+            if re.search(r"\b" + re.escape(fam) + r"\b", name_l) and not re.search(
+                    r"\b" + re.escape(fam) + r"[- ]?like\b", name_l):
+                return fam
+        return _norm(c.name)
 
     def is_drug(c: DrugCandidate) -> bool:
         if c.source == "database":

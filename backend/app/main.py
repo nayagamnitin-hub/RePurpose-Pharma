@@ -54,7 +54,10 @@ def _studies(drug: str, topic: str) -> list[LiteratureRef]:
 
 @app.get("/api/studies")
 def studies(drug: str = Query(..., min_length=1), topic: str = Query("")) -> dict[str, list[LiteratureRef]]:
-    return {"studies": _studies(drug, topic)}
+    try:
+        return {"studies": _studies(drug, topic)}
+    except Exception:
+        return {"studies": []}
 
 
 class AskRequest(BaseModel):
@@ -65,10 +68,13 @@ class AskRequest(BaseModel):
 
 
 @app.post("/api/ask")
-def ask(req: AskRequest) -> dict[str, str]:
+def ask(req: AskRequest) -> dict:
     provider = get_provider()
-    refs = _studies(req.drug, req.topic)
-    answer = answer_question(req.question, [req.drug], refs, provider, context=req.context)
+    try:
+        refs = _studies(req.drug, req.topic)
+        answer = answer_question(req.question, [req.drug], refs, provider, context=req.context)
+    except Exception:
+        answer = "Sorry, the AI could not answer just now (a brief service hiccup). Please try again."
     return {"answer": answer, "live": provider.live}
 
 
