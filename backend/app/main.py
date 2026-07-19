@@ -84,6 +84,42 @@ class ChatRequest(BaseModel):
     context: str = ""
 
 
+def _study_context(message: str) -> tuple[str | None, str | None]:
+    """If the user references a paper (PMCID / PMID / DOI / PubMed URL), fetch its actual text
+    from NCBI (PubMed abstracts + PMC open-access, both legal) so the AI reads the REAL study
+    instead of guessing from the title."""
+    from app.clients.ncbi import NcbiClient, extract_text_from_bioc
+
+    pmc = re.search(r"PMC\d+", message, re.I)
+    pmid = re.search(r"(?:PMID[:\s]*|pubmed\.ncbi\.nlm\.nih\.gov/)\s*(\d{5,9})", message, re.I)
+    doi = re.search(r"\b10\.\d{4,9}/[^\s\"'<>)\]]+", message)
+    if not (pmc or pmid or doi):
+        return None, None
+
+    ncbi = NcbiClient()
+    try:
+        if pmc:
+            try:
+                return pmc.group(0).upper(), extract_text_from_bioc(ncbi.fetch_fulltext_bioc(pmc.group(0).upper()))[:6000]
+            except Exception:
+                pass
+        if pmid:
+            try:
+                return f"PMID {pmid.group(1)}", extract_text_from_bioc(ncbi.fetch_abstract_bioc(pmid.group(1)))[:6000]
+            except Exception:
+                pass
+        if doi:
+            try:
+                ids = ncbi.search_pmids(f"{doi.group(0)}[DOI]", retmax=1)
+                if ids:
+                    return f"DOI {doi.group(0)}", extract_text_from_bioc(ncbi.fetch_abstract_bioc(ids[0]))[:6000]
+            except Exception:
+                pass
+    finally:
+        ncbi.close()
+    return None, None
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest) -> dict:
     """Proxy to the custom n8n 'RePurpose Pharma Chatbot' webhook (keeps the URL server-side, no CORS)."""
@@ -92,9 +128,22 @@ def chat(req: ChatRequest) -> dict:
     if not url:
         return {"reply": "The custom assistant isn't connected yet. Add your n8n webhook URL as the "
                          "N8N_WEBHOOK_URL setting and I'll come to life here."}
-    # if the user is mid-search, prepend the on-screen context so the assistant is screen-aware
-    message = (f"[Context: the user is currently viewing results for '{req.context}'.]\n{req.message}"
-               if req.context else req.message)
+
+    parts = []
+    if req.context:
+        parts.append(f"[Context: the user is currently viewing results for '{req.context}'.]")
+    try:
+        label, study = _study_context(req.message)
+    except Exception:
+        label, study = None, None
+    if study:
+        parts.append(f"The user referenced a study ({label}). Here is its ACTUAL text retrieved from "
+                     f"PubMed/PMC. Base your answer ONLY on this text, do not guess from the title:\n"
+                     f'"""\n{study}\n"""')
+    parts.append(req.message)
+    # Qwen "thinking" burns the token budget and truncates the answer; /no_think disables it.
+    message = "\n\n".join(parts) + "\n\n/no_think"
+
     from app.clients.base import make_client
     last_err = None
     for _ in range(2):  # retry once on a transient n8n/network hiccup

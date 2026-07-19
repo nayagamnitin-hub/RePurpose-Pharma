@@ -45,13 +45,15 @@ const CHAT_GREETING =
   + "and I'll break down the takeaways and how it could be repurposed.";
 
 function aiSessionId() {
-  if (!window._aiSession) window._aiSession = "s-" + Math.random().toString(36).slice(2);
-  return window._aiSession;
+  // persist across page reloads so the n8n chatbot keeps its memory
+  let s = localStorage.getItem("aiSession");
+  if (!s) { s = "s-" + Math.random().toString(36).slice(2); localStorage.setItem("aiSession", s); }
+  return s;
 }
 
 function chatAddMessage(box, text, who) {
   const msg = el("div", `ai-msg ${who}`);
-  msg.textContent = text;
+  if (who === "bot") msg.innerHTML = mdLite(text); else msg.textContent = text;
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
   return msg;
@@ -66,7 +68,8 @@ async function chatSend(text, box) {
       body: JSON.stringify({ message: text, sessionId: aiSessionId(), context: CURRENT_QUERY }),
     });
     const data = await res.json();
-    thinking.textContent = data.reply || "(no response)";
+    thinking.innerHTML = mdLite(data.reply || "(no response)");
+    box.scrollTop = box.scrollHeight;
   } catch (e) {
     thinking.textContent = "Couldn't reach the assistant: " + e.message;
   }
