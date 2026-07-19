@@ -92,6 +92,16 @@ def build_report(query: str) -> RepurposingReport:
     # drop non-drugs, and promote AI-confirmed established treatments into Existing.
     goal_text = (interp.goal_label if interp else None) or report.disease_name or query
     existing, repurposing = _dedupe_by_ingredient(existing, repurposing, goal_text, provider)
+
+    # Final clinical-assessment pass: recalibrate effectiveness/safety on real medical knowledge,
+    # drop off-goal entries, and add well-known drugs the databases missed (so labels are accurate
+    # and coverage is complete for every query).
+    from app.llm.assess import assess_and_augment
+    try:
+        existing, repurposing = assess_and_augment(goal_text, existing, repurposing, provider)
+    except Exception:
+        pass
+
     _assign_labels(existing)
     _assign_labels(repurposing)
 
