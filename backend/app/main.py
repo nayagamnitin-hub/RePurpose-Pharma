@@ -95,21 +95,24 @@ def chat(req: ChatRequest) -> dict:
     # if the user is mid-search, prepend the on-screen context so the assistant is screen-aware
     message = (f"[Context: the user is currently viewing results for '{req.context}'.]\n{req.message}"
                if req.context else req.message)
-    try:
-        from app.clients.base import make_client
-        with make_client() as http:
-            # the reasoning model can be slow (it "thinks" first), so allow generous time
-            r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
-            r.raise_for_status()
-            data = r.json()
-        reply = data.get("reply") or data.get("output") or data.get("text") or "(the assistant returned no text)"
-        # some models emit a <think>...</think> reasoning block; show only the final answer
-        reply = re.sub(r"(?is)<think>.*?</think>", "", reply)
-        if "</think>" in reply:
-            reply = reply.split("</think>")[-1]
-        return {"reply": reply.strip()}
-    except Exception:
-        return {"reply": "Sorry, I couldn't reach the assistant just now. Please try again in a moment."}
+    from app.clients.base import make_client
+    last_err = None
+    for _ in range(2):  # retry once on a transient n8n/network hiccup
+        try:
+            with make_client() as http:
+                # the reasoning model can be slow (it "thinks" first), so allow generous time
+                r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
+                r.raise_for_status()
+                data = r.json()
+            reply = data.get("reply") or data.get("output") or data.get("text") or "(the assistant returned no text)"
+            # some models emit a <think>...</think> reasoning block; show only the final answer
+            reply = re.sub(r"(?is)<think>.*?</think>", "", reply)
+            if "</think>" in reply:
+                reply = reply.split("</think>")[-1]
+            return {"reply": reply.strip()}
+        except Exception as e:
+            last_err = e
+    return {"reply": "Sorry, I couldn't reach the assistant just now. Please try again in a moment."}
 
 
 class DrugInfoRequest(BaseModel):
