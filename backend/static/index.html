@@ -18,7 +18,7 @@
       </a>
       <nav class="header-nav">
         <a href="#how">How it works</a>
-        <a class="btn btn-ghost" href="#search-anchor">Start exploring</a>
+        <button class="btn btn-primary" id="ai-nav-btn">💬 Talk to AI</button>
       </nav>
     </div>
   </header>
@@ -39,7 +39,14 @@
         <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
 
-      <div class="pills" id="category-pills"></div>
+      <button class="ai-cta" id="ai-cta">
+        <span class="ai-cta-emoji">💬</span>
+        <span class="ai-cta-text">
+          <strong>Talk to your personal AI pharmacologist</strong>
+          <span>Get a custom plan, or have it break down any study for you</span>
+        </span>
+        <span class="ai-cta-arrow">→</span>
+      </button>
       <p class="disclaimer-mini">Research &amp; education only. Not medical advice.</p>
     </div>
   </section>
@@ -101,6 +108,37 @@
         <div class="chips" id="all-target-chips"></div>
       </section>
     </div>
+  </main>
+
+  <!-- AI chatbot page (revealed by the Talk-to-AI buttons) -->
+  <main id="ai-page" class="wrap hidden">
+    <button class="btn btn-ghost back-btn" id="ai-back">← Back to search</button>
+    <section class="ai-hero">
+      <p class="eyebrow">RePurpose Pharma AI</p>
+      <h2>Your personal AI pharmacologist</h2>
+      <p class="ai-sub">A conversational research assistant focused on pharmacology and drug repurposing.
+        Talk to it like a person, get a plan built for your goal, or hand it a study to break down.
+        It stays on-topic: pharmacology and research only.</p>
+    </section>
+
+    <section class="ai-caps">
+      <div class="cap-card"><div class="cap-emoji">💬</div><h3>Talk naturally</h3>
+        <p>Have a real back-and-forth about drugs, mechanisms, and research, in plain language.</p></div>
+      <div class="cap-card"><div class="cap-emoji">🎯</div><h3>Build your plan</h3>
+        <p>Ask it to design a specific plan, for example lose weight and gain muscle, or regrow hair, grounded in the biology.</p></div>
+      <div class="cap-card"><div class="cap-emoji">📄</div><h3>Analyze studies</h3>
+        <p>Paste a study and get the key takeaways, plus how the findings could translate into future or repurposing uses.</p></div>
+    </section>
+
+    <section class="ai-chat">
+      <div id="ai-messages" class="ai-messages"></div>
+      <form id="ai-chat-form" class="ai-chat-form">
+        <input id="ai-chat-input" autocomplete="off"
+               placeholder="Ask about a drug, a goal, or paste a study…" />
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+      <p class="disclaimer-mini">Research &amp; education only. Not medical advice.</p>
+    </section>
   </main>
 
   <footer class="site-footer">

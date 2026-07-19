@@ -7,6 +7,7 @@ const CATEGORIES = [
   { emoji: "🧠", label: "Alzheimer's disease", q: "Alzheimer disease" },
   { emoji: "🩸", label: "Type 2 diabetes", q: "type 2 diabetes mellitus" },
   { emoji: "🫀", label: "Parkinson's disease", q: "Parkinson disease" },
+  { emoji: "🧬", label: "ALS (Lou Gehrig's)", q: "amyotrophic lateral sclerosis" },
   { emoji: "⏳", label: "Longevity", q: "longevity / anti-aging" },
 ];
 
@@ -23,13 +24,8 @@ const GLOWS = ["#f1ddc6", "#e7dcc4", "#f0d6bf", "#e3ddd0", "#f1e0ca", "#ead7c0",
 
 // ---- landing setup ----
 function buildLanding() {
-  const pills = $("#category-pills");
   const grid = $("#popular-grid");
   CATEGORIES.forEach((c, i) => {
-    const pill = el("button", "pill", `${c.emoji} ${esc(c.label)}`);
-    pill.onclick = () => runSearch(c.q);
-    pills.appendChild(pill);
-
     const card = el("div", "explore-card");
     card.style.setProperty("--card-glow", GLOWS[i % GLOWS.length]);
     card.innerHTML = `<span class="explore-emoji">${c.emoji}</span>
@@ -39,6 +35,64 @@ function buildLanding() {
     card.onclick = () => runSearch(c.q);
     grid.appendChild(card);
   });
+}
+
+// ---- AI chatbot page (front-end shell; connect your n8n webhook below) ----
+// Paste your n8n "RePurpose Pharma Chatbot" webhook URL here to go live:
+const N8N_WEBHOOK_URL = "";
+
+function openAIPage() {
+  $("#landing").classList.add("hidden");
+  $("#results").classList.add("hidden");
+  $("#ai-page").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (!$("#ai-messages").dataset.greeted) {
+    aiAddMessage("Hi! I'm your RePurpose pharmacology assistant. Ask me anything about drugs and research, "
+      + "ask me to build you a plan (like lose weight and gain muscle, or regrow hair), or paste a study "
+      + "and I'll break down the takeaways and how it could be repurposed.", "bot");
+    $("#ai-messages").dataset.greeted = "1";
+  }
+}
+
+function closeAIPage() {
+  $("#ai-page").classList.add("hidden");
+  $("#landing").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function aiAddMessage(text, who) {
+  const msg = el("div", `ai-msg ${who}`);
+  msg.textContent = text;
+  const box = $("#ai-messages");
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+  return msg;
+}
+
+async function aiSend(text) {
+  aiAddMessage(text, "user");
+  const thinking = aiAddMessage("Thinking…", "bot");
+  if (!N8N_WEBHOOK_URL) {
+    thinking.textContent = "⚙️ The assistant isn't connected yet. Add your n8n webhook URL in app.js "
+      + "(N8N_WEBHOOK_URL) and I'll come to life here.";
+    return;
+  }
+  try {
+    const res = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatInput: text, sessionId: aiSessionId() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    thinking.textContent = data.output || data.text || data.reply || data.message
+      || "(the assistant returned no text)";
+  } catch (e) {
+    thinking.textContent = "Couldn't reach the assistant: " + e.message;
+  }
+}
+
+function aiSessionId() {
+  if (!window._aiSession) window._aiSession = "s-" + Math.random().toString(36).slice(2);
+  return window._aiSession;
 }
 
 // ---- search flow ----
@@ -378,4 +432,15 @@ $("#search-form").addEventListener("submit", e => {
 $("#modal-close").addEventListener("click", closeModal);
 $("#modal-overlay").addEventListener("click", e => { if (e.target.id === "modal-overlay") closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// AI chatbot page
+$("#ai-nav-btn").addEventListener("click", openAIPage);
+$("#ai-cta").addEventListener("click", openAIPage);
+$("#ai-back").addEventListener("click", closeAIPage);
+$("#ai-chat-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = $("#ai-chat-input");
+  const t = input.value.trim();
+  if (t) { aiSend(t); input.value = ""; }
+});
 window.goHome = goHome;
