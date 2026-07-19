@@ -85,9 +85,9 @@ class ChatRequest(BaseModel):
 
 
 def _study_context(message: str) -> tuple[str | None, str | None]:
-    """If the user references a paper (PMCID / PMID / DOI / PubMed URL), fetch its actual text
-    from NCBI (PubMed abstracts + PMC open-access, both legal) so the AI reads the REAL study
-    instead of guessing from the title."""
+    """If the user references a paper (PMCID / PMID / DOI / PubMed URL), fetch its ACTUAL text
+    from NCBI (legal: PubMed abstract + PMC open-access full text). We always resolve to a PMID
+    first, because a PMID always has a fetchable abstract, so the AI never has to guess."""
     from app.clients.ncbi import NcbiClient, extract_text_from_bioc
 
     pmc = re.search(r"PMC\d+", message, re.I)
@@ -98,26 +98,38 @@ def _study_context(message: str) -> tuple[str | None, str | None]:
 
     ncbi = NcbiClient()
     try:
-        if pmc:
+        pmcid = pmc.group(0).upper() if pmc else None
+        target_pmid = pmid.group(1) if pmid else None
+        # resolve PMCID or DOI down to a PMID so we can always get the abstract
+        if not target_pmid and pmcid:
             try:
-                return pmc.group(0).upper(), extract_text_from_bioc(ncbi.fetch_fulltext_bioc(pmc.group(0).upper()))[:6000]
+                target_pmid = ncbi.pmcid_to_pmid(pmcid)
             except Exception:
                 pass
-        if pmid:
-            try:
-                return f"PMID {pmid.group(1)}", extract_text_from_bioc(ncbi.fetch_abstract_bioc(pmid.group(1)))[:6000]
-            except Exception:
-                pass
-        if doi:
+        if not target_pmid and doi:
             try:
                 ids = ncbi.search_pmids(f"{doi.group(0)}[DOI]", retmax=1)
-                if ids:
-                    return f"DOI {doi.group(0)}", extract_text_from_bioc(ncbi.fetch_abstract_bioc(ids[0]))[:6000]
+                target_pmid = ids[0] if ids else None
             except Exception:
                 pass
+
+        label = pmcid or (f"PMID {target_pmid}" if target_pmid else "the study")
+        text = None
+        # prefer richer PMC open-access full text if available
+        if pmcid:
+            try:
+                text = extract_text_from_bioc(ncbi.fetch_fulltext_bioc(pmcid))
+            except Exception:
+                text = None
+        # reliable fallback: the abstract (always available for a valid PMID)
+        if not text and target_pmid:
+            try:
+                text = extract_text_from_bioc(ncbi.fetch_abstract_bioc(target_pmid))
+            except Exception:
+                text = None
+        return (label, text[:3500]) if text else (None, None)
     finally:
         ncbi.close()
-    return None, None
 
 
 @app.post("/api/chat")
@@ -141,27 +153,36 @@ def chat(req: ChatRequest) -> dict:
                      f"PubMed/PMC. Base your answer ONLY on this text, do not guess from the title:\n"
                      f'"""\n{study}\n"""')
     parts.append(req.message)
-    # Qwen "thinking" burns the token budget and truncates the answer; /no_think disables it.
-    message = "\n\n".join(parts) + "\n\n/no_think"
+    message = "\n\n".join(parts)
 
     from app.clients.base import make_client
-    last_err = None
     for _ in range(2):  # retry once on a transient n8n/network hiccup
         try:
             with make_client() as http:
-                # the reasoning model can be slow (it "thinks" first), so allow generous time
                 r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
                 r.raise_for_status()
                 data = r.json()
-            reply = data.get("reply") or data.get("output") or data.get("text") or "(the assistant returned no text)"
-            # some models emit a <think>...</think> reasoning block; show only the final answer
-            reply = re.sub(r"(?is)<think>.*?</think>", "", reply)
-            if "</think>" in reply:
-                reply = reply.split("</think>")[-1]
-            return {"reply": reply.strip()}
-        except Exception as e:
-            last_err = e
+            raw = data.get("reply") or data.get("output") or data.get("text") or ""
+            return {"reply": _strip_thinking(raw)}
+        except Exception:
+            pass
     return {"reply": "Sorry, I couldn't reach the assistant just now. Please try again in a moment."}
+
+
+def _strip_thinking(reply: str) -> str:
+    """Remove reasoning-model 'thinking' so the user only sees the final answer."""
+    if not reply:
+        return "(the assistant returned no text)"
+    # well-formed: <think>...</think> followed by the answer
+    reply = re.sub(r"(?is)<think>.*?</think>\s*", "", reply)
+    if "</think>" in reply:
+        reply = reply.split("</think>")[-1]
+    # malformed: an unclosed <think> means the answer was cut off inside the reasoning
+    if re.search(r"(?i)<think>", reply):
+        return ("The assistant's answer got cut off while reasoning. Please try again or rephrase. "
+                "(Tip: switching the n8n Groq model to a non-reasoning model like "
+                "llama-3.3-70b-versatile gives clean, complete answers.)")
+    return reply.strip() or "(the assistant returned no text)"
 
 
 class DrugInfoRequest(BaseModel):

@@ -90,6 +90,16 @@ class NcbiClient:
             out[rec.get("pmid", "")] = rec.get("pmcid")  # pmcid is None if not open-access
         return out
 
+    def pmcid_to_pmid(self, pmcid: str) -> str | None:
+        """Resolve a PMCID (e.g. PMC5155684) to its PMID via the ID converter."""
+        params = {**_common_params(), "ids": pmcid, "format": "json", "versions": "no"}
+        r = self._http.get(IDCONV, params=params)
+        r.raise_for_status()
+        for rec in r.json().get("records", []):
+            if rec.get("pmid"):
+                return rec["pmid"]
+        return None
+
     # 4. Citation Exporter: PMID -> formatted citation ---------------------
     def citation(self, pmid: str, fmt: str = "ris", db: str = "pubmed") -> str:
         # fmt: "ris" | "medline" | "csl" ; db: "pubmed" | "pmc"
