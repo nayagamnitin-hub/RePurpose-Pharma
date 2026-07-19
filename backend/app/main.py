@@ -78,6 +78,40 @@ def ask(req: AskRequest) -> dict:
     return {"answer": answer, "live": provider.live}
 
 
+class ChatRequest(BaseModel):
+    message: str
+    sessionId: str = "web"
+    context: str = ""
+
+
+@app.post("/api/chat")
+def chat(req: ChatRequest) -> dict:
+    """Proxy to the custom n8n 'RePurpose Pharma Chatbot' webhook (keeps the URL server-side, no CORS)."""
+    from app.config import settings
+    url = settings.n8n_webhook_url
+    if not url:
+        return {"reply": "The custom assistant isn't connected yet. Add your n8n webhook URL as the "
+                         "N8N_WEBHOOK_URL setting and I'll come to life here."}
+    # if the user is mid-search, prepend the on-screen context so the assistant is screen-aware
+    message = (f"[Context: the user is currently viewing results for '{req.context}'.]\n{req.message}"
+               if req.context else req.message)
+    try:
+        from app.clients.base import make_client
+        with make_client() as http:
+            # the reasoning model can be slow (it "thinks" first), so allow generous time
+            r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
+            r.raise_for_status()
+            data = r.json()
+        reply = data.get("reply") or data.get("output") or data.get("text") or "(the assistant returned no text)"
+        # some models emit a <think>...</think> reasoning block; show only the final answer
+        reply = re.sub(r"(?is)<think>.*?</think>", "", reply)
+        if "</think>" in reply:
+            reply = reply.split("</think>")[-1]
+        return {"reply": reply.strip()}
+    except Exception:
+        return {"reply": "Sorry, I couldn't reach the assistant just now. Please try again in a moment."}
+
+
 class DrugInfoRequest(BaseModel):
     name: str
     mechanism: str = ""

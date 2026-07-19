@@ -197,19 +197,34 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 
 /* AI call-to-action in hero (replaces the old pills row) */
 .ai-cta {
-  display: flex; align-items: center; gap: 16px; width: 100%; max-width: 560px;
-  margin: 4px auto 0; padding: 18px 22px; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 18px; width: 100%; max-width: 620px;
+  margin: 6px auto 0; padding: 22px 28px; cursor: pointer; text-align: left;
   background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow); transition: .2s cubic-bezier(.2,.7,.2,1); font: inherit; color: var(--ink);
 }
 .ai-cta:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--accent); }
-.ai-cta-emoji { font-size: 30px; display: grid; place-items: center; width: 52px; height: 52px;
-  border-radius: 14px; background: var(--accent-soft); flex-shrink: 0; }
+.ai-cta-emoji { font-size: 34px; display: grid; place-items: center; width: 60px; height: 60px;
+  border-radius: 16px; background: var(--accent-soft); flex-shrink: 0; }
 .ai-cta-text { display: flex; flex-direction: column; flex: 1; }
-.ai-cta-text strong { font-size: 17px; }
-.ai-cta-text span { color: var(--muted); font-size: 14px; }
-.ai-cta-arrow { font-size: 22px; color: var(--accent); transition: transform .2s; }
+.ai-cta-text strong { font-size: 19px; }
+.ai-cta-text span { color: var(--muted); font-size: 15px; }
+.ai-cta-arrow { font-size: 24px; color: var(--accent); transition: transform .2s; }
 .ai-cta:hover .ai-cta-arrow { transform: translateX(4px); }
+
+/* "Show all N" toggle under a drug section */
+.show-more { margin: 14px auto 0; display: block; }
+
+/* docked chat popup (top-right button) — floats over the page so you can still see results */
+.chat-modal { position: fixed; bottom: 20px; right: 20px; z-index: 95;
+  width: 390px; max-width: calc(100vw - 32px); height: 560px; max-height: calc(100vh - 110px); }
+.chat-panel { display: flex; flex-direction: column; height: 100%; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-lg); overflow: hidden; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px;
+  border-bottom: 1px solid var(--line); font-weight: 700; background: var(--surface-2); }
+.chat-head .modal-close { position: static; width: 32px; height: 32px; }
+.chat-modal .ai-messages { flex: 1; max-height: none; }
+.chat-modal .ai-chat-form { padding: 12px; border-top: 1px solid var(--line); margin-top: 0; }
+@media (max-width: 480px) { .chat-modal { left: 8px; right: 8px; bottom: 8px; width: auto; } }
 
 /* AI page */
 .ai-hero { text-align: center; padding: 20px 0 10px; }

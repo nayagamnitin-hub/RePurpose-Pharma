@@ -22,5 +22,8 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_base_url: str | None = None
 
+    # Custom chatbot: full n8n webhook URL, e.g. https://<your-n8n-host>/webhook/pharma-chat
+    n8n_webhook_url: str | None = None
+
 
 settings = Settings()

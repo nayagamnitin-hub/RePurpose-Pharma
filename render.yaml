@@ -21,3 +21,6 @@ services:
         value: ai-drug-repurposing
       - key: NCBI_EMAIL
         value: subbu.g@gmail.com
+      # Custom chatbot webhook (set in dashboard): https://<your-n8n-host>/webhook/pharma-chat
+      - key: N8N_WEBHOOK_URL
+        sync: false

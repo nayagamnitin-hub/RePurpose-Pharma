@@ -37,63 +37,64 @@ function buildLanding() {
   });
 }
 
-// ---- AI chatbot page (front-end shell; connect your n8n webhook below) ----
-// Paste your n8n "RePurpose Pharma Chatbot" webhook URL here to go live:
-const N8N_WEBHOOK_URL = "";
+// ---- Custom AI chatbot (the n8n "RePurpose Pharma Chatbot", via the /api/chat proxy) ----
+let CURRENT_QUERY = "";  // set during a search, so the chatbot is screen-aware
+const CHAT_GREETING =
+  "Hi! I'm your RePurpose pharmacology assistant. Ask me anything about drugs and research, "
+  + "ask me to build you a plan (like lose weight and gain muscle, or regrow hair), or paste a study "
+  + "and I'll break down the takeaways and how it could be repurposed.";
 
+function aiSessionId() {
+  if (!window._aiSession) window._aiSession = "s-" + Math.random().toString(36).slice(2);
+  return window._aiSession;
+}
+
+function chatAddMessage(box, text, who) {
+  const msg = el("div", `ai-msg ${who}`);
+  msg.textContent = text;
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+  return msg;
+}
+
+async function chatSend(text, box) {
+  chatAddMessage(box, text, "user");
+  const thinking = chatAddMessage(box, "Thinking…", "bot");
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, sessionId: aiSessionId(), context: CURRENT_QUERY }),
+    });
+    const data = await res.json();
+    thinking.textContent = data.reply || "(no response)";
+  } catch (e) {
+    thinking.textContent = "Couldn't reach the assistant: " + e.message;
+  }
+}
+
+// full page (opened by the big hero CTA)
 function openAIPage() {
   $("#landing").classList.add("hidden");
   $("#results").classList.add("hidden");
   $("#ai-page").classList.remove("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
-  if (!$("#ai-messages").dataset.greeted) {
-    aiAddMessage("Hi! I'm your RePurpose pharmacology assistant. Ask me anything about drugs and research, "
-      + "ask me to build you a plan (like lose weight and gain muscle, or regrow hair), or paste a study "
-      + "and I'll break down the takeaways and how it could be repurposed.", "bot");
-    $("#ai-messages").dataset.greeted = "1";
-  }
+  const box = $("#ai-messages");
+  if (!box.dataset.greeted) { chatAddMessage(box, CHAT_GREETING, "bot"); box.dataset.greeted = "1"; }
 }
-
 function closeAIPage() {
   $("#ai-page").classList.add("hidden");
   $("#landing").classList.remove("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function aiAddMessage(text, who) {
-  const msg = el("div", `ai-msg ${who}`);
-  msg.textContent = text;
-  const box = $("#ai-messages");
-  box.appendChild(msg);
-  box.scrollTop = box.scrollHeight;
-  return msg;
+// docked popup (opened by the top-right button; usable while browsing results)
+function openChatPopup() {
+  $("#chat-modal").classList.remove("hidden");
+  const box = $("#chat-modal-messages");
+  if (!box.dataset.greeted) { chatAddMessage(box, CHAT_GREETING, "bot"); box.dataset.greeted = "1"; }
+  $("#chat-modal-input").focus();
 }
-
-async function aiSend(text) {
-  aiAddMessage(text, "user");
-  const thinking = aiAddMessage("Thinking…", "bot");
-  if (!N8N_WEBHOOK_URL) {
-    thinking.textContent = "⚙️ The assistant isn't connected yet. Add your n8n webhook URL in app.js "
-      + "(N8N_WEBHOOK_URL) and I'll come to life here.";
-    return;
-  }
-  try {
-    const res = await fetch(N8N_WEBHOOK_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatInput: text, sessionId: aiSessionId() }),
-    });
-    const data = await res.json().catch(() => ({}));
-    thinking.textContent = data.output || data.text || data.reply || data.message
-      || "(the assistant returned no text)";
-  } catch (e) {
-    thinking.textContent = "Couldn't reach the assistant: " + e.message;
-  }
-}
-
-function aiSessionId() {
-  if (!window._aiSession) window._aiSession = "s-" + Math.random().toString(36).slice(2);
-  return window._aiSession;
-}
+function closeChatPopup() { $("#chat-modal").classList.add("hidden"); }
 
 // ---- search flow ----
 async function runSearch(query) {
@@ -138,6 +139,7 @@ function renderReport(report, query) {
   const interp = report.interpretation || {};
   STUDY_TOPIC = report.disease_name || interp.goal_label || "";
   GOAL_CONTEXT = report.disease_name || interp.goal_label || query;
+  CURRENT_QUERY = GOAL_CONTEXT;  // makes the docked chatbot aware of what's on screen
 
   // back button
   const back = el("button", "btn btn-ghost back-btn", "← New search");
@@ -170,11 +172,7 @@ function renderReport(report, query) {
     const featured = el("div", "featured-grid");
     existing.slice(0, 3).forEach(c => featured.appendChild(drugCard(c, true)));
     rpt.appendChild(featured);
-    if (existing.length > 3) {
-      const grid = el("div", "card-grid drug-grid");
-      existing.slice(3).forEach(c => grid.appendChild(drugCard(c, false)));
-      rpt.appendChild(grid);
-    }
+    if (existing.length > 3) renderDrugGrid(rpt, existing.slice(3), 6);  // 3 featured + 6, rest behind "Show all"
   } else {
     rpt.appendChild(el("p", "empty", "No established treatments matched."));
   }
@@ -184,9 +182,7 @@ function renderReport(report, query) {
     "Drugs from other uses, and real investigational agents in active clinical trials, promising but not yet established here."));
   const repur = report.repurposing_candidates || [];
   if (repur.length) {
-    const grid = el("div", "card-grid drug-grid");
-    repur.forEach(c => grid.appendChild(drugCard(c, false)));
-    rpt.appendChild(grid);
+    renderDrugGrid(rpt, repur, 9);  // show 9, rest behind "Show all"
   } else {
     rpt.appendChild(el("p", "empty", "No repurposing candidates found."));
   }
@@ -209,6 +205,18 @@ function sectionTitle(title, sub) {
   s.appendChild(el("h2", "section-title", esc(title)));
   if (sub) s.appendChild(el("p", "section-sub", esc(sub)));
   return s;
+}
+
+// render up to `cap` drug cards, hiding the rest behind a "Show all N" button
+function renderDrugGrid(parent, cands, cap) {
+  const grid = el("div", "card-grid drug-grid");
+  cands.slice(0, cap).forEach(c => grid.appendChild(drugCard(c, false)));
+  parent.appendChild(grid);
+  if (cands.length > cap) {
+    const btn = el("button", "btn btn-ghost show-more", `Show all ${cands.length}`);
+    btn.onclick = () => { cands.slice(cap).forEach(c => grid.appendChild(drugCard(c, false))); btn.remove(); };
+    parent.appendChild(btn);
+  }
 }
 
 // ---- one drug card ----
@@ -433,14 +441,21 @@ $("#modal-close").addEventListener("click", closeModal);
 $("#modal-overlay").addEventListener("click", e => { if (e.target.id === "modal-overlay") closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
-// AI chatbot page
-$("#ai-nav-btn").addEventListener("click", openAIPage);
+// AI chatbot: top-right = docked popup (usable mid-search); big hero CTA = full page
+$("#ai-nav-btn").addEventListener("click", openChatPopup);
 $("#ai-cta").addEventListener("click", openAIPage);
 $("#ai-back").addEventListener("click", closeAIPage);
+$("#chat-modal-close").addEventListener("click", closeChatPopup);
 $("#ai-chat-form").addEventListener("submit", e => {
   e.preventDefault();
   const input = $("#ai-chat-input");
   const t = input.value.trim();
-  if (t) { aiSend(t); input.value = ""; }
+  if (t) { chatSend(t, $("#ai-messages")); input.value = ""; }
+});
+$("#chat-modal-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = $("#chat-modal-input");
+  const t = input.value.trim();
+  if (t) { chatSend(t, $("#chat-modal-messages")); input.value = ""; }
 });
 window.goHome = goHome;

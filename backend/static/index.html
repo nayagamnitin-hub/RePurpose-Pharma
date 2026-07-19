@@ -153,6 +153,21 @@
     </div>
   </footer>
 
+  <!-- Custom-AI docked chat popup (top-right button) -->
+  <div id="chat-modal" class="chat-modal hidden">
+    <div class="chat-panel">
+      <div class="chat-head">
+        <span>💬 RePurpose AI</span>
+        <button class="modal-close" id="chat-modal-close" aria-label="Close">×</button>
+      </div>
+      <div id="chat-modal-messages" class="ai-messages"></div>
+      <form id="chat-modal-form" class="ai-chat-form">
+        <input id="chat-modal-input" autocomplete="off" placeholder="Ask the AI…" />
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Drug detail modal -->
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true">
