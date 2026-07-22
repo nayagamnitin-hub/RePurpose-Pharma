@@ -78,6 +78,54 @@ def ask(req: AskRequest) -> dict:
     return {"answer": answer, "live": provider.live}
 
 
+class ExplainRequest(BaseModel):
+    drug: str
+    label: str
+    goal: str = ""
+    mechanism: str = ""
+    stage: str = ""
+    known_for: list[str] = []
+    warnings: list[str] = []
+    effectiveness: int = 0
+    safety: int = 0
+    confidence: int = 0
+    established: bool = False
+
+
+_EXPLAIN_SYS = (
+    "You explain, in 2 to 3 short plain-language sentences, what a specific label or score means for a "
+    "specific drug in a drug-repurposing tool. Be concrete and factual. Do NOT invent exact approval years, "
+    "trial names, or statistics; if you are not sure of a specific detail, speak in accurate general terms. "
+    "No em dashes."
+)
+
+
+@app.post("/api/explain")
+def explain(req: ExplainRequest) -> dict:
+    from app.textutil import no_em_dashes
+    provider = get_provider()
+    kind = ("established/approved treatment" if req.established else "repurposing / investigational candidate")
+    facts = (
+        f"Drug: {req.drug}\nGoal being explored: {req.goal or 'n/a'}\nThis drug is a {kind} for the goal.\n"
+        f"Mechanism: {req.mechanism or 'n/a'}\nDevelopment stage: {req.stage or 'n/a'}\n"
+        f"Known uses: {', '.join(req.known_for) or 'n/a'}\nWarnings: {', '.join(req.warnings) or 'none'}\n"
+        f"Scores shown to the user: effectiveness {req.effectiveness}%, safety {req.safety}%, confidence {req.confidence}%.\n\n"
+        f"The user clicked the label: '{req.label}'. Explain what THIS label/score means for THIS drug:\n"
+        "- 'Approved': what it is approved to treat and that approval means regulators judged trials to show benefit outweighing risks.\n"
+        "- 'Black-box warning': what a black-box warning is and, if known, the general safety reason this drug carries one.\n"
+        "- a Confidence score: explain that confidence reflects how strong the case is that this drug helps the goal. For an "
+        "established treatment it is high because it is a proven option; for a repurposing candidate it reflects how strong the "
+        "mechanistic and evidence case is. Explain why it sits at roughly this level.\n"
+        "- Effectiveness or Safety score: explain what it estimates and why it is around this level for this drug.\n"
+        "- 'Most effective' / 'Safest' / 'Most side effects' / 'Low side effects': explain it is a comparison within this list.\n"
+        "- otherwise: explain the label plainly."
+    )
+    try:
+        return {"explanation": no_em_dashes(provider.complete(_EXPLAIN_SYS, facts, temperature=0.2))}
+    except Exception:
+        return {"explanation": "Couldn't load an explanation just now. Please try again."}
+
+
 class ChatRequest(BaseModel):
     message: str
     sessionId: str = "web"

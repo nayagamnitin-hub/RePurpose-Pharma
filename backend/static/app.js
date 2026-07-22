@@ -173,9 +173,9 @@ function renderReport(report, query) {
   const existing = report.existing_solutions || [];
   if (existing.length) {
     const featured = el("div", "featured-grid");
-    existing.slice(0, 3).forEach(c => featured.appendChild(drugCard(c, true)));
+    existing.slice(0, 3).forEach(c => featured.appendChild(drugCard(c, true, true)));
     rpt.appendChild(featured);
-    if (existing.length > 3) renderDrugGrid(rpt, existing.slice(3), 6);  // 3 featured + 6, rest behind "Show all"
+    if (existing.length > 3) renderDrugGrid(rpt, existing.slice(3), 6, true);  // 3 featured + 6, rest behind "Show all"
   } else {
     rpt.appendChild(el("p", "empty", "No established treatments matched."));
   }
@@ -185,7 +185,7 @@ function renderReport(report, query) {
     "Drugs from other uses, and real investigational agents in active clinical trials, promising but not yet established here."));
   const repur = report.repurposing_candidates || [];
   if (repur.length) {
-    renderDrugGrid(rpt, repur, 9);  // show 9, rest behind "Show all"
+    renderDrugGrid(rpt, repur, 9, false);  // show 9, rest behind "Show all"
   } else {
     rpt.appendChild(el("p", "empty", "No repurposing candidates found."));
   }
@@ -211,36 +211,55 @@ function sectionTitle(title, sub) {
 }
 
 // render up to `cap` drug cards, hiding the rest behind a "Show all N" button
-function renderDrugGrid(parent, cands, cap) {
+function renderDrugGrid(parent, cands, cap, isExisting) {
   const grid = el("div", "card-grid drug-grid");
-  cands.slice(0, cap).forEach(c => grid.appendChild(drugCard(c, false)));
+  cands.slice(0, cap).forEach(c => grid.appendChild(drugCard(c, false, isExisting)));
   parent.appendChild(grid);
   if (cands.length > cap) {
     const btn = el("button", "btn btn-ghost show-more", `Show all ${cands.length}`);
-    btn.onclick = () => { cands.slice(cap).forEach(c => grid.appendChild(drugCard(c, false))); btn.remove(); };
+    btn.onclick = () => { cands.slice(cap).forEach(c => grid.appendChild(drugCard(c, false, isExisting))); btn.remove(); };
     parent.appendChild(btn);
   }
 }
 
+// map raw stage codes to readable English
+function prettyStage(s) {
+  if (!s) return s;
+  const map = {
+    APPROVAL: "Approved", PHASE_4: "Phase 4", PHASE4: "Phase 4", PHASE_3: "Phase 3", PHASE3: "Phase 3",
+    PHASE_2: "Phase 2", PHASE2: "Phase 2", PHASE_1: "Phase 1", PHASE1: "Phase 1", PHASE_1_2: "Phase 1/2",
+    EARLY_PHASE_1: "Early Phase 1", EARLY_PHASE1: "Early Phase 1", PRECLINICAL: "Preclinical",
+  };
+  return map[String(s).toUpperCase()] || s;
+}
+
 // ---- one drug card ----
-function drugCard(c, featured) {
+function drugCard(c, featured, isExisting) {
   const card = el("div", "drug-card" + (featured ? " featured" : "") + (c.prospective ? " prospective" : ""));
-  const headline = (c.labels && c.labels[0]) || c.clinical_stage || "";
+  const headline = (c.labels && c.labels[0]) || prettyStage(c.clinical_stage) || "";
 
-  card.appendChild(Object.assign(el("div", "drug-top"), {
-    innerHTML: `<h3 class="drug-name">${esc(c.name)}</h3>
-      <span class="rank-badge">${pct(c.confidence)}% confidence</span>`
-  }));
+  // header: name + clickable confidence badge
+  const top = el("div", "drug-top");
+  top.appendChild(el("h3", "drug-name", esc(c.name)));
+  const confLabel = `${pct(c.confidence)}% confidence`;
+  const rank = el("span", "rank-badge clickable", esc(confLabel));
+  rank.title = "Click for an explanation";
+  rank.onclick = (e) => { e.stopPropagation(); openExplain(c, confLabel, isExisting); };
+  top.appendChild(rank);
+  card.appendChild(top);
 
-  // badges
+  // badges (each clickable -> AI explanation)
   const badges = el("div", "badges");
   (c.labels || []).forEach(l => {
-    let cls = "badge";
-    if (/safe|low side|right direction|approved/i.test(l)) cls += " good";
+    let cls = "badge clickable";
+    if (/safe|low side|approved|established/i.test(l)) cls += " good";
     else if (/side effects|black-box|withdrawn|harsh/i.test(l)) cls += " warn";
     else if (/clinical trials/i.test(l)) cls += " trial";
     else if (/prospective|ai-proposed/i.test(l)) cls += " prospect";
-    badges.appendChild(el("span", cls, esc(l)));
+    const b = el("span", cls, esc(l));
+    b.title = "Click for an explanation";
+    b.onclick = (e) => { e.stopPropagation(); openExplain(c, l, isExisting); };
+    badges.appendChild(b);
   });
   if (badges.children.length) card.appendChild(badges);
 
@@ -254,7 +273,7 @@ function drugCard(c, featured) {
   // meta
   if (c.mechanism_of_action) card.appendChild(el("p", "drug-meta", `<strong>Mechanism:</strong> ${esc(c.mechanism_of_action)}`));
   if (c.via_targets && c.via_targets.length) card.appendChild(el("p", "drug-meta", `<strong>Acts via:</strong> ${esc(c.via_targets.join(", "))}`));
-  if (c.clinical_stage) card.appendChild(el("p", "drug-meta", `<strong>Stage:</strong> ${esc(c.clinical_stage)}`));
+  if (c.clinical_stage) card.appendChild(el("p", "drug-meta", `<strong>Stage:</strong> ${esc(prettyStage(c.clinical_stage))}`));
   if (c.known_for && c.known_for.length) card.appendChild(el("p", "drug-meta", `<strong>Known for:</strong> ${esc(c.known_for.slice(0, 4).join(", "))}`));
 
   // source notes
@@ -350,6 +369,32 @@ function closeModal() {
   document.body.style.overflow = "";
 }
 
+// ---- badge / score explanation popup ----
+function openExplain(c, label, isExisting) {
+  const body = $("#explain-body");
+  body.innerHTML = `<p class="eyebrow">${esc(c.name)}</p><h3 class="explain-label">${esc(label)}</h3>
+    <div id="explain-text"><p class="muted-sm">Loading explanation…</p></div>`;
+  $("#explain-overlay").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  fetch("/api/explain", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      drug: c.name, label, goal: GOAL_CONTEXT || CURRENT_QUERY || "",
+      mechanism: c.mechanism_of_action || "", stage: prettyStage(c.clinical_stage) || "",
+      known_for: c.known_for || [], warnings: c.warnings || [],
+      effectiveness: pct(c.effectiveness_score), safety: pct(c.safety_score), confidence: pct(c.confidence),
+      established: !!isExisting,
+    }),
+  }).then(r => r.json()).then(d => {
+    $("#explain-text").innerHTML = mdLite(d.explanation || "No explanation available.");
+  }).catch(() => { $("#explain-text").innerHTML = `<p class="muted-sm">Couldn't load the explanation.</p>`; });
+}
+
+function closeExplain() {
+  $("#explain-overlay").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
 function metric(label, value, cls) {
   return `<div class="metric">
     <div class="bar ${cls}"><span style="width:${value}%"></span></div>
@@ -442,7 +487,9 @@ $("#search-form").addEventListener("submit", e => {
 });
 $("#modal-close").addEventListener("click", closeModal);
 $("#modal-overlay").addEventListener("click", e => { if (e.target.id === "modal-overlay") closeModal(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+$("#explain-close").addEventListener("click", closeExplain);
+$("#explain-overlay").addEventListener("click", e => { if (e.target.id === "explain-overlay") closeExplain(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeExplain(); } });
 
 // AI chatbot: top-right = docked popup (usable mid-search); big hero CTA = full page
 $("#ai-nav-btn").addEventListener("click", openChatPopup);

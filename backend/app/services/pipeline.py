@@ -57,6 +57,17 @@ def _action_sign(action_type: str | None) -> int:
     return 0
 
 
+def _pretty_name(name: str) -> str:
+    """Tidy drug-name casing for display. ALL-CAPS generic names (LECANEMAB) -> Title Case;
+    leave names that contain digits or already have lowercase (MK-677, TYRA-300, PEG-somatropin,
+    Regaine) exactly as written, since those are real codes/brands."""
+    if not name:
+        return name
+    if any(ch.isdigit() for ch in name) or name != name.upper():
+        return name
+    return " ".join(w if len(w) <= 3 else w[:1] + w[1:].lower() for w in name.split())
+
+
 def _first_moa(drug: dict) -> tuple[str | None, str | None]:
     rows = (drug.get("mechanismsOfAction") or {}).get("rows") or []
     if not rows:
@@ -108,6 +119,11 @@ def build_report(query: str) -> RepurposingReport:
     report.existing_solutions = sorted(existing, key=lambda c: (c.effectiveness_score, c.safety_score), reverse=True)[:MAX_CANDIDATES]
     report.repurposing_candidates = sorted(repurposing, key=lambda c: (c.confidence, c.safety_score), reverse=True)[:MAX_CANDIDATES]
     report.opposite_effect = sorted(opposite, key=lambda c: c.effectiveness_score, reverse=True)[:30]
+
+    # tidy up drug-name casing for display (LECANEMAB -> Lecanemab; keep codes like MK-677, TYRA-300)
+    for c in report.existing_solutions + report.repurposing_candidates + report.opposite_effect:
+        c.name = _pretty_name(c.name)
+        c.variants = [_pretty_name(v) for v in c.variants]
 
     _enrich_targets(report)
     report.summary = _maybe_summarize(report, provider)
@@ -340,8 +356,6 @@ def _safety(cand: DrugCandidate) -> float:
 
 def _assign_labels(cands: list[DrugCandidate]) -> None:
     for c in cands:
-        if c.direction == "helps":
-            c.labels.append("Right direction")
         if c.is_approved:
             c.labels.append("Approved")
         elif (c.max_phase or 0) <= 0:
