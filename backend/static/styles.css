@@ -137,8 +137,21 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 .result-head { padding: 6px 0 10px; }
 .result-head h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.025em; margin: 4px 0 10px; }
 .result-rationale { color: var(--muted); max-width: 760px; font-size: 16px; margin: 0 0 14px; }
+.targets-label { font-weight: 700; font-size: 15px; margin: 6px 0 2px; }
+.targets-hint { color: var(--muted); font-size: 14px; margin: 0 0 10px; max-width: 720px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { background: var(--accent-soft); color: var(--accent-dark); border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 600; }
+
+/* curability / overview note */
+.overview-note { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 12px 16px; margin: 12px 0 4px; font-size: 15px; color: var(--ink); }
+
+/* Learn More (evidence) inside the explain popup */
+.learn-more { margin-top: 14px; }
+.learn-out { margin-top: 12px; font-size: 14px; line-height: 1.6; }
+.learn-studies { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.learn-studies li { margin-bottom: 6px; }
+.learn-studies a { color: var(--accent-dark); }
 
 /* summary card */
 .summary-card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 24px 26px; margin: 18px 0 8px; box-shadow: var(--shadow); }

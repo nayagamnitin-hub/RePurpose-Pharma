@@ -102,4 +102,6 @@ class RepurposingReport(BaseModel):
     opposite_effect: list[DrugCandidate] = Field(default_factory=list)
 
     summary: str | None = None
+    # short note on whether the condition has a cure vs only slowing/managing it
+    overview_note: str | None = None
     notes: list[str] = []

@@ -155,10 +155,19 @@ function renderReport(report, query) {
   const eyebrow = interp.mode === "targets" ? "Goal · interpreted by AI" : "Condition";
   head.innerHTML = `<p class="eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2>`;
   if (interp.rationale) head.appendChild(el("p", "result-rationale", esc(interp.rationale)));
+  head.appendChild(el("p", "targets-label", "🎯 Proteins targeted"));
+  head.appendChild(el("p", "targets-hint",
+    "The biological targets (proteins) involved in this condition. Established treatments act on these, "
+    "and repurposing candidates are matched against them."));
   const chips = el("div", "chips");
   (report.targets || []).slice(0, 10).forEach(t => chips.appendChild(el("span", "chip", esc(t.symbol))));
   head.appendChild(chips);
   rpt.appendChild(head);
+
+  // curability note (e.g. "ALS has no cure; treatments slow progression")
+  if (report.overview_note) {
+    rpt.appendChild(el("div", "overview-note", `ℹ️ ${esc(report.overview_note)}`));
+  }
 
   // AI summary (no heading — the summary has its own structure)
   if (report.summary) {
@@ -387,7 +396,39 @@ function openExplain(c, label, isExisting) {
     }),
   }).then(r => r.json()).then(d => {
     $("#explain-text").innerHTML = mdLite(d.explanation || "No explanation available.");
+    // "Learn More" (with real studies) only on confidence scores
+    if (/confidence/i.test(label)) addLearnMore(c, isExisting);
   }).catch(() => { $("#explain-text").innerHTML = `<p class="muted-sm">Couldn't load the explanation.</p>`; });
+}
+
+function addLearnMore(c, isExisting) {
+  const wrap = $("#explain-body");
+  const btn = el("button", "mini-btn learn-more", "📚 Learn more (see the evidence)");
+  const out = el("div", "learn-out");
+  wrap.append(btn, out);
+  btn.onclick = () => {
+    btn.disabled = true; btn.textContent = "Gathering evidence…";
+    fetch("/api/evidence", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        drug: c.name, goal: GOAL_CONTEXT || CURRENT_QUERY || "", established: !!isExisting,
+        mechanism: c.mechanism_of_action || "", targets: c.via_targets || [],
+      }),
+    }).then(r => r.json()).then(d => {
+      btn.remove();
+      let html = mdLite(d.summary || "No evidence summary available.");
+      const studies = d.studies || [];
+      if (studies.length) {
+        html += `<p class="muted-sm" style="margin-top:10px"><strong>Sources:</strong></p><ul class="learn-studies">`;
+        studies.forEach(s => {
+          html += `<li><a href="https://pubmed.ncbi.nlm.nih.gov/${esc(s.pmid)}/" target="_blank" rel="noopener">PMID ${esc(s.pmid)}</a>`
+            + (s.snippet ? `: ${esc(s.snippet.slice(0, 120))}…` : "") + `</li>`;
+        });
+        html += `</ul>`;
+      }
+      out.innerHTML = html;
+    }).catch(() => { btn.disabled = false; btn.textContent = "📚 Learn more (see the evidence)"; out.innerHTML = `<p class="muted-sm">Couldn't load the evidence.</p>`; });
+  };
 }
 
 function closeExplain() {
@@ -448,7 +489,7 @@ function buildAsk(c, box) {
         }),
       });
       const data = await res.json();
-      answer.textContent = data.answer || "(no answer)";
+      answer.innerHTML = mdLite(data.answer || "(no answer)");  // render bold/lists, not raw **
     } catch (e) {
       answer.textContent = "Couldn't reach the AI: " + e.message;
     }

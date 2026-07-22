@@ -114,8 +114,9 @@ def explain(req: ExplainRequest) -> dict:
         "- 'Approved': what it is approved to treat and that approval means regulators judged trials to show benefit outweighing risks.\n"
         "- 'Black-box warning': what a black-box warning is and, if known, the general safety reason this drug carries one.\n"
         "- a Confidence score: explain that confidence reflects how strong the case is that this drug helps the goal. For an "
-        "established treatment it is high because it is a proven option; for a repurposing candidate it reflects how strong the "
-        "mechanistic and evidence case is. Explain why it sits at roughly this level.\n"
+        "established treatment it is high because it is a proven, approved option. For a REPURPOSING candidate, be careful NOT to "
+        "imply proven clinical data. Frame it as MECHANISTIC PLAUSIBILITY (it acts on a relevant target/pathway) and a hypothesis "
+        "needing more research, not established proof. Tell the user they can click 'Learn More' to see the actual studies.\n"
         "- Effectiveness or Safety score: explain what it estimates and why it is around this level for this drug.\n"
         "- 'Most effective' / 'Safest' / 'Most side effects' / 'Low side effects': explain it is a comparison within this list.\n"
         "- otherwise: explain the label plainly."
@@ -124,6 +125,43 @@ def explain(req: ExplainRequest) -> dict:
         return {"explanation": no_em_dashes(provider.complete(_EXPLAIN_SYS, facts, temperature=0.2))}
     except Exception:
         return {"explanation": "Couldn't load an explanation just now. Please try again."}
+
+
+class EvidenceRequest(BaseModel):
+    drug: str
+    goal: str = ""
+    established: bool = False
+    mechanism: str = ""
+    targets: list[str] = []
+
+
+@app.post("/api/evidence")
+def evidence(req: EvidenceRequest) -> dict:
+    """'Learn More' on a confidence score: real PubMed studies + an evidence-grounded summary."""
+    from app.textutil import no_em_dashes
+    provider = get_provider()
+    refs = _studies(req.drug, req.goal)
+    snippets = "\n\n".join(f"PMID {r.pmid}: {r.snippet}" for r in refs if r.snippet)
+
+    if req.established:
+        task = ("This drug is an established/approved treatment for the goal. In 3 to 4 sentences say what it "
+                "is used for and what it has been shown to do, citing PMIDs from the snippets. You may note it "
+                "is an approved/standard option, but do NOT invent a specific approval date or trial name.")
+    else:
+        task = (f"This is a REPURPOSING candidate. In 3 to 4 sentences give the evidence-based rationale: it acts "
+                f"on {', '.join(req.targets) or 'its target'} ({req.mechanism or 'see mechanism'}); explain that this "
+                f"target or pathway is relevant to the goal and that this makes it a plausible candidate. Cite PMIDs "
+                f"from the snippets where relevant. Be explicit where evidence is limited or only mechanistic (a "
+                f"hypothesis), rather than overclaiming.")
+    system = ("You summarize the REAL evidence for a drug relative to a goal, for a repurposing tool. Use ONLY the "
+              "provided study snippets for factual claims and cite them like (PMID 12345678). If snippets are thin, "
+              "say the evidence is limited instead of overclaiming. No em dashes.")
+    prompt = f"Drug: {req.drug}\nGoal: {req.goal}\n\nStudy snippets:\n{snippets or '(none retrieved)'}\n\n{task}"
+    try:
+        summary = no_em_dashes(provider.complete(system, prompt, temperature=0.2))
+    except Exception:
+        summary = "Couldn't load the evidence summary just now."
+    return {"summary": summary, "studies": refs}
 
 
 class ChatRequest(BaseModel):

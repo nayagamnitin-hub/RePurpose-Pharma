@@ -127,7 +127,25 @@ def build_report(query: str) -> RepurposingReport:
 
     _enrich_targets(report)
     report.summary = _maybe_summarize(report, provider)
+    report.overview_note = _overview_note(goal_text, provider)
     return report
+
+
+def _overview_note(subject: str, provider) -> str | None:
+    """1-2 plain sentences on whether the condition has a cure, or if treatments only slow/manage it."""
+    if not provider.live or not subject:
+        return None
+    system = (
+        "In 1 to 2 plain sentences, state whether the condition has a known cure. If there is NO cure "
+        "(e.g. ALS, most cancers, Parkinson's), say so and that current drugs mainly slow progression or "
+        "manage symptoms. If it is curable or the goal is achievable, say so briefly. For a lifestyle goal "
+        "(weight, hair, height), note results vary and treatments manage rather than cure. Be accurate and "
+        "neutral. No em dashes."
+    )
+    try:
+        return no_em_dashes(provider.complete(system, f"Condition or goal: {subject}\nWrite the note.", temperature=0.1))
+    except Exception:
+        return None
 
 
 # ---- resolve targets -----------------------------------------------------
