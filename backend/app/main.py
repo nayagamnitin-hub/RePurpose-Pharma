@@ -142,16 +142,26 @@ def chat(req: ChatRequest) -> dict:
                          "N8N_WEBHOOK_URL setting and I'll come to life here."}
 
     parts = []
-    if req.context:
-        parts.append(f"[Context: the user is currently viewing results for '{req.context}'.]")
+    goal = (req.context or "").strip()
+    if goal:
+        parts.append(f"[Context: the user is exploring drug REPURPOSING for '{goal}' and is viewing those results.]")
     try:
         label, study = _study_context(req.message)
     except Exception:
         label, study = None, None
     if study:
-        parts.append(f"The user referenced a study ({label}). Here is its ACTUAL text retrieved from "
-                     f"PubMed/PMC. Base your answer ONLY on this text, do not guess from the title:\n"
-                     f'"""\n{study}\n"""')
+        goal_phrase = f"the user's goal ({goal})" if goal else "other conditions or goals"
+        parts.append(
+            f"The user referenced a study ({label}). Its ACTUAL text from PubMed/PMC is below. Base factual "
+            f"claims ONLY on this text (do not guess from the title).\n\"\"\"\n{study}\n\"\"\"\n\n"
+            f"REPURPOSING ANALYSIS (required, this is a drug-repurposing tool): Do NOT simply say the study "
+            f"does not mention {goal or 'the goal'} and stop. Instead: (1) briefly state what the study actually "
+            f"shows (mechanism, targets, effects); (2) then REASON mechanistically about whether the drug could be "
+            f"repurposed for {goal_phrase}, giving a clear 'it could plausibly help because...' OR 'it likely could "
+            f"not help because...' with the biological rationale (shared targets/pathways, effects on relevant "
+            f"mechanisms), even though this study does not test that use. Clearly label the repurposing reasoning "
+            f"as a hypothesis for further research."
+        )
     parts.append(req.message)
     message = "\n\n".join(parts)
 
