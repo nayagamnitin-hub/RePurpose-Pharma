@@ -157,7 +157,7 @@ function renderReport(report, query) {
   if (interp.rationale) head.appendChild(el("p", "result-rationale", esc(interp.rationale)));
   head.appendChild(el("p", "targets-label", "🎯 Proteins targeted"));
   head.appendChild(el("p", "targets-hint",
-    "The biological targets (proteins) involved in this condition. Established treatments act on these, "
+    "The biological targets (proteins) involved in this condition. Established treatments act on these, " +
     "and repurposing candidates are matched against them."));
   const chips = el("div", "chips");
   (report.targets || []).slice(0, 10).forEach(t => chips.appendChild(el("span", "chip", esc(t.symbol))));
