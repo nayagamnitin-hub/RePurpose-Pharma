@@ -309,6 +309,13 @@ def chat(req: ChatRequest) -> dict:
             f"drugs, supplements, mechanisms and options (as research information, not medical advice). "
             f"Only politely decline if the request is genuinely unrelated to medicine, health, or biology."
         )
+    # help follow-ups + avoid mid-sentence cutoffs from the model's token limit
+    parts.append(
+        "(Use the conversation so far to understand follow-ups and references like 'them', 'it', "
+        "'those', or a lone '?'. Give a COMPLETE answer that finishes its last sentence; keep it "
+        "reasonably concise so it fits, and for long topics use a compact ranked or bulleted list of "
+        "the key points rather than a long essay.)"
+    )
     message = "\n\n".join(parts)
 
     from app.clients.base import make_client
