@@ -396,8 +396,7 @@ function openExplain(c, label, isExisting) {
     }),
   }).then(r => r.json()).then(d => {
     $("#explain-text").innerHTML = mdLite(d.explanation || "No explanation available.");
-    // "Learn More" (with real studies) only on confidence scores
-    if (/confidence/i.test(label)) addLearnMore(c, isExisting);
+    addLearnMore(c, isExisting);  // real studies + evidence, on every badge/score
   }).catch(() => { $("#explain-text").innerHTML = `<p class="muted-sm">Couldn't load the explanation.</p>`; });
 }
 

@@ -273,7 +273,19 @@ def chat(req: ChatRequest) -> dict:
             f"mechanisms), even though this study does not test that use. Clearly label the repurposing reasoning "
             f"as a hypothesis for further research."
         )
-    parts.append(req.message)
+        parts.append(req.message)
+    else:
+        # Reframe so goals/wellness/performance queries (e.g. "help me focus") are interpreted through a
+        # pharmacology lens instead of being wrongly rejected as off-topic. Only genuinely unrelated
+        # requests (with no health/biology angle) should be declined.
+        parts.append(
+            f'A user of a pharmacology and drug-repurposing assistant asks: "{req.message}". '
+            f"Interpret this through a pharmacology lens. If it relates in any way to a health condition, a "
+            f"body or mind goal, performance, focus, energy, sleep, mood, symptoms, or anything that drugs, "
+            f"supplements, or biological mechanisms can influence, then ANSWER helpfully with the relevant "
+            f"drugs, supplements, mechanisms and options (as research information, not medical advice). "
+            f"Only politely decline if the request is genuinely unrelated to medicine, health, or biology."
+        )
     message = "\n\n".join(parts)
 
     from app.clients.base import make_client

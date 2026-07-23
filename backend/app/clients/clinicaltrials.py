@@ -28,17 +28,24 @@ _PHASE_NUM = {"PHASE4": 4.0, "PHASE3": 3.0, "PHASE2": 2.0, "PHASE1": 1.0, "EARLY
 
 
 def _clean_name(name: str) -> str:
-    """Trim trial-arm verbosity to a drug name (keeps codes like TYRA-300 / BMN 111).
+    """Trim trial-arm verbosity to the DRUG name (keeps codes like TYRA-300 / BMN 111).
 
-    'Infigratinib 0.25 mg/kg/day' -> 'Infigratinib'; 'X administered via pen' -> 'X'.
+    'Infigratinib 0.25 mg/kg/day' -> 'Infigratinib'; 'Masitinib 4.5' -> 'Masitinib';
+    'MSC-NTF cells transplantation by multiple ... injections' -> 'MSC-NTF cells'.
     """
     name = name.replace("®", " ").replace("™", " ")
-    name = re.split(r"\s+(?:is provided|administered|administration|via|injection|subcutaneous|oral)\b",
-                    name, flags=re.I)[0]
+    # cut at any procedure / delivery / description connector -> keep the part before it
+    name = re.split(
+        r"\s+(?:is provided|administered|administration|via|injection|injections|infusion|infusions|"
+        r"transplantation|transplant|implantation|by |in addition|at \d|for the|for treatment|"
+        r"subcutaneous|intravenous|intrathecal|intramuscular|oral|tablet|capsule|solution|suspension)\b",
+        name, flags=re.I)[0]
     name = name.split(":")[0]
     name = re.sub(r"\s*\([^)]*group[^)]*\)", "", name, flags=re.I)  # drop "(treated group)" etc.
-    # drop a trailing dose only when a unit follows (so numeric drug codes survive)
+    # drop a trailing dose with a unit (so numeric drug codes survive)
     name = re.sub(r"\s+\d+(\.\d+)?\s*(mg|kg|mcg|g|ml|iu|units?|%)\b.*$", "", name, flags=re.I)
+    # drop a trailing bare DECIMAL dose like 'Masitinib 4.5' / 'Masitinib 3.0' (codes use whole numbers)
+    name = re.sub(r"\s+\d+\.\d+\s*$", "", name)
     return re.sub(r"\s+", " ", name).strip(" -,")
 
 
