@@ -29,6 +29,15 @@ app = FastAPI(
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+@app.middleware("http")
+async def _no_cache(request, call_next):
+    """Tell browsers not to cache the UI, so an updated app.js/index.html never gets stuck
+    on a stale cached version (which can break the page)."""
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, must-revalidate"
+    return response
+
+
 # ---- API -----------------------------------------------------------------
 @app.get("/api/health")
 def health() -> dict[str, str]:
