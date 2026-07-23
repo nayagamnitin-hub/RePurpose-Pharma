@@ -516,21 +516,42 @@ function buildAsk(c, box) {
 // very small markdown -> html (bold, headings, bullets) for the summary
 function mdLite(text) {
   const lines = esc(text).split("\n");
-  let html = "", inList = false;
+  let html = "", inUl = false, inOl = false;
+  const closeLists = () => {
+    if (inUl) { html += "</ul>"; inUl = false; }
+    if (inOl) { html += "</ol>"; inOl = false; }
+  };
   for (let raw of lines) {
-    let line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    if (/^\s*[-*]\s+/.test(line)) {
-      if (!inList) { html += "<ul>"; inList = true; }
-      html += `<li>${line.replace(/^\s*[-*]\s+/, "")}</li>`;
-    } else {
-      if (inList) { html += "</ul>"; inList = false; }
-      const t = line.trim();
-      if (!t) continue;
-      if (/^<strong>.*<\/strong>:?$/.test(t)) html += `<h4>${t}</h4>`;
-      else html += `<p>${line}</p>`;
+    // inline: **bold** and *italic* (italic won't touch "* " bullets)
+    let line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                  .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
+    const t = line.trim();
+
+    // markdown heading:  #, ##, ### ... (strip the hashes so they never show as text)
+    const h = t.match(/^#{1,6}\s+(.*?)\s*#*$/);
+    if (h) { closeLists(); html += `<h4>${h[1]}</h4>`; continue; }
+
+    // bulleted list
+    if (/^\s*[-*•]\s+/.test(line)) {
+      if (inOl) { html += "</ol>"; inOl = false; }
+      if (!inUl) { html += "<ul>"; inUl = true; }
+      html += `<li>${line.replace(/^\s*[-*•]\s+/, "")}</li>`;
+      continue;
     }
+    // numbered list
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      if (inUl) { html += "</ul>"; inUl = false; }
+      if (!inOl) { html += "<ol>"; inOl = true; }
+      html += `<li>${line.replace(/^\s*\d+[.)]\s+/, "")}</li>`;
+      continue;
+    }
+
+    closeLists();
+    if (!t) continue;
+    if (/^<strong>.*<\/strong>:?$/.test(t)) html += `<h4>${t}</h4>`;  // a bold-only line acts as a subheading
+    else html += `<p>${line}</p>`;
   }
-  if (inList) html += "</ul>";
+  closeLists();
   return html;
 }
 

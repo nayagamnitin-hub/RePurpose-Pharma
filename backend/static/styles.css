@@ -277,7 +277,9 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 .ai-msg.user { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; border-bottom-right-radius: 5px; }
 .ai-msg.bot strong { color: var(--accent-dark); }
 .ai-msg p:first-child { margin-top: 0; } .ai-msg p:last-child { margin-bottom: 0; }
-.ai-msg ul { margin: 6px 0; padding-left: 18px; }
+.ai-msg ul, .ai-msg ol { margin: 6px 0; padding-left: 18px; }
+.ai-msg h4, .ask-answer h4 { margin: 8px 0 4px; font-size: 15px; font-weight: 700; }
+.ai-msg h4:first-child, .ask-answer h4:first-child { margin-top: 0; }
 @keyframes msgIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 
 /* typing indicator */
