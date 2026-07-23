@@ -113,8 +113,8 @@ def build_report(query: str) -> RepurposingReport:
     except Exception:
         pass
 
-    _assign_labels(existing)
-    _assign_labels(repurposing)
+    _assign_labels(existing, is_existing=True)
+    _assign_labels(repurposing, is_existing=False)
 
     report.existing_solutions = sorted(existing, key=lambda c: (c.effectiveness_score, c.safety_score), reverse=True)[:MAX_CANDIDATES]
     report.repurposing_candidates = sorted(repurposing, key=lambda c: (c.confidence, c.safety_score), reverse=True)[:MAX_CANDIDATES]
@@ -372,11 +372,14 @@ def _safety(cand: DrugCandidate) -> float:
     return round(max(0.05, min(1.0, s)), 3)
 
 
-def _assign_labels(cands: list[DrugCandidate]) -> None:
+def _assign_labels(cands: list[DrugCandidate], is_existing: bool = False) -> None:
     for c in cands:
+        established = is_existing or c.is_approved or "Established" in c.labels
         if c.is_approved:
             c.labels.append("Approved")
-        elif (c.max_phase or 0) <= 0:
+        # "Experimental" only for genuinely early-stage REPURPOSING drugs with real preclinical data
+        # (max_phase must be a known 0, not just unknown/None) and never on an established drug
+        elif not established and c.max_phase is not None and c.max_phase <= 0:
             c.labels.append("Experimental")
         if c.has_black_box:
             c.labels.append("Black-box warning")

@@ -157,7 +157,7 @@ def _merge(llm: QueryInterpretation, curated: dict) -> QueryInterpretation:
 
 
 def _interpret_with_llm(query: str, provider: LLMProvider) -> QueryInterpretation:
-    raw = provider.complete(_SYSTEM, _PROMPT_TEMPLATE.format(query=query))
+    raw = provider.complete(_SYSTEM, _PROMPT_TEMPLATE.format(query=query), temperature=0.0)
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     data = json.loads(match.group(0) if match else raw)
     mode = "targets" if data.get("mode") == "targets" else "disease"

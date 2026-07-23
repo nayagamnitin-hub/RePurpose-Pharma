@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -44,11 +45,26 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# cache results per query so the same search returns the SAME result every time (the pipeline
+# uses AI steps that can otherwise vary run to run). Bounded so memory stays small.
+_REPORT_CACHE: "OrderedDict[str, RepurposingReport]" = OrderedDict()
+_CACHE_MAX = 64
+
+
 @app.get("/api/repurpose", response_model=RepurposingReport)
-def repurpose(q: str = Query(..., min_length=2, description="Disease, target, or plain-language goal")) -> RepurposingReport:
+def repurpose(q: str = Query(..., min_length=2, description="Disease, target, or plain-language goal"),
+              refresh: bool = Query(False, description="Recompute instead of using the cached result")) -> RepurposingReport:
+    key = q.strip().lower()
+    if not refresh and key in _REPORT_CACHE:
+        _REPORT_CACHE.move_to_end(key)
+        return _REPORT_CACHE[key]
     report = build_report(q)
     if not report.targets:
         raise HTTPException(status_code=404, detail=f"Could not resolve any targets for '{q}'.")
+    _REPORT_CACHE[key] = report
+    _REPORT_CACHE.move_to_end(key)
+    while len(_REPORT_CACHE) > _CACHE_MAX:
+        _REPORT_CACHE.popitem(last=False)
     return report
 
 

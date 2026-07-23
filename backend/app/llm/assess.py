@@ -135,6 +135,8 @@ def assess_and_augment(goal, existing, repurposing, provider: LLMProvider, max_a
             top_adverse_events=[s.strip() for s in re.split(r"[;,]", d.get("side_effects") or "") if s.strip()][:5],
             source=("established" if est else "ai"),
             prospective=(not est),
+            is_approved=est,
+            max_phase=(4.0 if est else None),
             clinical_stage=("Approved / established" if est else "Investigational"),
             labels=(["Established"] if est else ["AI-proposed", "Prospective"]),
         )

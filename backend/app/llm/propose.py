@@ -83,7 +83,7 @@ Return JSON exactly:
 
     dir_map = {t["symbol"]: t.get("direction") for t in targets_info}
     try:
-        raw = provider.complete(_SYSTEM, prompt, temperature=0.2)
+        raw = provider.complete(_SYSTEM, prompt, temperature=0.0)
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         data = json.loads(match.group(0) if match else raw)
     except Exception:
