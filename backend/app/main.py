@@ -158,30 +158,53 @@ class EvidenceRequest(BaseModel):
     established: bool = False
     mechanism: str = ""
     targets: list[str] = []
+    label: str = ""
 
 
 @app.post("/api/evidence")
 def evidence(req: EvidenceRequest) -> dict:
-    """'Learn More' on a confidence score: real PubMed studies + an evidence-grounded summary."""
+    """'Learn More' from a badge: real PubMed studies + an explanation tailored to THAT badge."""
     from app.textutil import no_em_dashes
     provider = get_provider()
-    refs = _studies(req.drug, req.goal)
-    snippets = "\n\n".join(f"PMID {r.pmid}: {r.snippet}" for r in refs if r.snippet)
+    label = (req.label or "").lower()
+    tgt = ", ".join(req.targets) or "its target"
 
-    if req.established:
-        task = ("This drug is an established/approved treatment for the goal. In 3 to 4 sentences say what it "
-                "is used for and what it has been shown to do, citing PMIDs from the snippets. You may note it "
-                "is an approved/standard option, but do NOT invent a specific approval date or trial name.")
-    else:
-        task = (f"This is a REPURPOSING candidate. In 3 to 4 sentences give the evidence-based rationale: it acts "
-                f"on {', '.join(req.targets) or 'its target'} ({req.mechanism or 'see mechanism'}); explain that this "
-                f"target or pathway is relevant to the goal and that this makes it a plausible candidate. Cite PMIDs "
-                f"from the snippets where relevant. Be explicit where evidence is limited or only mechanistic (a "
-                f"hypothesis), rather than overclaiming.")
-    system = ("You summarize the REAL evidence for a drug relative to a goal, for a repurposing tool. Use ONLY the "
-              "provided study snippets for factual claims and cite them like (PMID 12345678). If snippets are thin, "
-              "say the evidence is limited instead of overclaiming. No em dashes.")
-    prompt = f"Drug: {req.drug}\nGoal: {req.goal}\n\nStudy snippets:\n{snippets or '(none retrieved)'}\n\n{task}"
+    # pick a study topic + task that matches the specific badge the user clicked
+    if "black" in label:  # Black-box warning
+        topic, task = ("black box warning safety risk",
+            "Explain roughly WHEN and specifically WHY this drug received a black-box warning: the serious safety "
+            "risk behind it. Cite PMIDs where the snippets support it. If unsure of the exact timing, say so generally.")
+    elif "side effect" in label or "harsh" in label:  # Most side effects / Effective but harsh
+        topic, task = (f"{req.drug} adverse effects",
+            "Focus on this drug's notable SIDE EFFECTS and why its safety profile is considered significant or harsh, "
+            "with the specific adverse effects. Cite PMIDs from the snippets.")
+    elif "safe" in label or "low side" in label:  # Safest / Low side effects
+        topic, task = (f"{req.drug} safety tolerability",
+            "Explain why this drug is relatively SAFE or well tolerated (its side-effect profile), citing PMIDs.")
+    elif "approved" in label or "established" in label:
+        topic, task = (req.goal,
+            "Explain what this drug is APPROVED/used to treat and the evidence it works, citing PMIDs. If you are "
+            "confident of the general approval context you may mention it, but do NOT invent a specific year or trial.")
+    elif "effective" in label:  # Most effective
+        topic, task = (req.goal,
+            "Explain the EVIDENCE for this drug's effectiveness for the goal, citing PMIDs from the snippets.")
+    elif req.established:  # confidence on an established drug
+        topic, task = (req.goal,
+            "Explain what this drug is used for and what it has been shown to do for the goal, citing PMIDs. Note it "
+            "is a standard option, but do NOT invent an approval date or trial name.")
+    else:  # confidence on a repurposing candidate
+        topic, task = (req.goal,
+            f"Give the evidence-based rationale for repurposing: it acts on {tgt} ({req.mechanism or 'see mechanism'}); "
+            f"explain how that target/pathway relates to the goal, citing PMIDs. Be explicit where the evidence is "
+            f"limited or only mechanistic (a hypothesis), rather than overclaiming.")
+
+    refs = _studies(req.drug, topic)
+    snippets = "\n\n".join(f"PMID {r.pmid}: {r.snippet}" for r in refs if r.snippet)
+    system = ("You explain the REAL evidence for one specific aspect of a drug, for a research tool. Use the provided "
+              "study snippets for factual claims and cite them like (PMID 12345678). If snippets are thin, say the "
+              "evidence is limited rather than overclaiming. Do not fabricate dates, trials, or numbers. 3 to 4 "
+              "sentences. No em dashes.")
+    prompt = f"Drug: {req.drug}\nGoal: {req.goal}\nAspect the user asked about: {req.label or 'overall'}\n\nStudy snippets:\n{snippets or '(none retrieved)'}\n\n{task}"
     try:
         summary = no_em_dashes(provider.complete(system, prompt, temperature=0.2))
     except Exception:

@@ -396,11 +396,11 @@ function openExplain(c, label, isExisting) {
     }),
   }).then(r => r.json()).then(d => {
     $("#explain-text").innerHTML = mdLite(d.explanation || "No explanation available.");
-    addLearnMore(c, isExisting);  // real studies + evidence, on every badge/score
+    addLearnMore(c, isExisting, label);  // real studies + evidence, tailored to this badge
   }).catch(() => { $("#explain-text").innerHTML = `<p class="muted-sm">Couldn't load the explanation.</p>`; });
 }
 
-function addLearnMore(c, isExisting) {
+function addLearnMore(c, isExisting, label) {
   const wrap = $("#explain-body");
   const btn = el("button", "mini-btn learn-more", "📚 Learn more (see the evidence)");
   const out = el("div", "learn-out");
@@ -411,7 +411,7 @@ function addLearnMore(c, isExisting) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         drug: c.name, goal: GOAL_CONTEXT || CURRENT_QUERY || "", established: !!isExisting,
-        mechanism: c.mechanism_of_action || "", targets: c.via_targets || [],
+        mechanism: c.mechanism_of_action || "", targets: c.via_targets || [], label: label || "",
       }),
     }).then(r => r.json()).then(d => {
       btn.remove();
