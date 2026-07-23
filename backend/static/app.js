@@ -52,26 +52,42 @@ function aiSessionId() {
 }
 
 function chatAddMessage(box, text, who) {
+  const row = el("div", `ai-row ${who}`);
+  if (who === "bot") row.appendChild(el("div", "ai-avatar", "✚"));
   const msg = el("div", `ai-msg ${who}`);
   if (who === "bot") msg.innerHTML = mdLite(text); else msg.textContent = text;
-  box.appendChild(msg);
+  row.appendChild(msg);
+  box.appendChild(row);
+  box.scrollTop = box.scrollHeight;
+  return msg;
+}
+
+function chatTyping(box) {
+  const row = el("div", "ai-row bot");
+  row.appendChild(el("div", "ai-avatar", "✚"));
+  const msg = el("div", "ai-msg bot typing");
+  msg.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+  row.appendChild(msg);
+  box.appendChild(row);
   box.scrollTop = box.scrollHeight;
   return msg;
 }
 
 async function chatSend(text, box) {
   chatAddMessage(box, text, "user");
-  const thinking = chatAddMessage(box, "Thinking…", "bot");
+  const typing = chatTyping(box);
   try {
     const res = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, sessionId: aiSessionId(), context: CURRENT_QUERY }),
     });
     const data = await res.json();
-    thinking.innerHTML = mdLite(data.reply || "(no response)");
+    typing.classList.remove("typing");
+    typing.innerHTML = mdLite(data.reply || "(no response)");
     box.scrollTop = box.scrollHeight;
   } catch (e) {
-    thinking.textContent = "Couldn't reach the assistant: " + e.message;
+    typing.classList.remove("typing");
+    typing.textContent = "Couldn't reach the assistant: " + e.message;
   }
 }
 
