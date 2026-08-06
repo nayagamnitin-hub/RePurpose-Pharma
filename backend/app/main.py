@@ -218,6 +218,34 @@ class ChatRequest(BaseModel):
     context: str = ""
 
 
+_CAPABILITIES = (
+    "I'm your RePurpose pharmacology assistant. Here's what I can help with:\n"
+    "- **Explore drugs & mechanisms** — how a drug works, its targets, and evidence.\n"
+    "- **Build you a plan** — a science-backed approach for a goal like losing weight, "
+    "building muscle, regrowing hair, or sharper focus.\n"
+    "- **Break down a study** — paste a PubMed link, PMID, or DOI and I'll summarize it and how "
+    "it could be repurposed.\n\n"
+    "What would you like to dig into?"
+)
+
+
+def _smalltalk_reply(message: str) -> str | None:
+    """Warmly handle greetings / meta questions / thanks without hitting the n8n topic guard."""
+    m = message.strip().lower().strip("!.?, ")
+    greet = {"hi", "hello", "hey", "yo", "hiya", "howdy", "sup", "hey there", "hello there",
+             "good morning", "good afternoon", "good evening", "gm"}
+    if m in greet or (len(m) <= 14 and any(m.startswith(g + " ") or m == g for g in ("hi", "hello", "hey"))):
+        return "Hey! " + _CAPABILITIES
+    if m in {"thanks", "thank you", "ty", "thx", "thankyou", "appreciate it", "cool", "nice", "ok", "okay"}:
+        return "You're welcome. Ask me anything about a drug, a goal, or a study whenever you're ready."
+    meta = ("what can you do", "what do you do", "who are you", "what are you", "how do you work",
+            "what is this", "what can i ask", "what can you help", "your capabilities", "help me",
+            "what's this", "whats this")
+    if len(m) < 40 and (m in ("help",) or any(k in m for k in meta)):
+        return _CAPABILITIES
+    return None
+
+
 def _study_context(message: str) -> tuple[str | None, str | None]:
     """If the user references a paper (PMCID / PMID / DOI / PubMed URL), fetch its ACTUAL text
     from NCBI (legal: PubMed abstract + PMC open-access full text). We always resolve to a PMID
@@ -274,6 +302,12 @@ def chat(req: ChatRequest) -> dict:
     if not url:
         return {"reply": "The custom assistant isn't connected yet. Add your n8n webhook URL as the "
                          "N8N_WEBHOOK_URL setting and I'll come to life here."}
+
+    # Greetings / "what can you do" / thanks -> answer warmly here, so the n8n topic guard
+    # never coldly rejects normal conversation openers.
+    small = _smalltalk_reply(req.message)
+    if small:
+        return {"reply": small}
 
     parts = []
     goal = (req.context or "").strip()

@@ -19,6 +19,18 @@ const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, c => ({ "&": "
 let STUDY_TOPIC = "";   // clean topic for PubMed searches
 let GOAL_CONTEXT = "";  // human goal label for AI context
 
+// scroll-reveal: fade + rise elements as they scroll into view
+const _revealObserver = ("IntersectionObserver" in window)
+  ? new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("revealed"); _revealObserver.unobserve(e.target); } });
+    }, { threshold: 0.06, rootMargin: "0px 0px -40px 0px" })
+  : null;
+function reveal(elm) {
+  if (!elm || !_revealObserver) return;   // no observer -> element stays fully visible
+  elm.classList.add("reveal");
+  _revealObserver.observe(elm);
+}
+
 // soft warm glow tones for the explore-card hover graphic
 const GLOWS = ["#f1ddc6", "#e7dcc4", "#f0d6bf", "#e3ddd0", "#f1e0ca", "#ead7c0", "#eedfc9", "#e6d5be"];
 
@@ -34,7 +46,9 @@ function buildLanding() {
       <span class="go">Explore →</span>`;
     card.onclick = () => runSearch(c.q);
     grid.appendChild(card);
+    reveal(card);
   });
+  document.querySelectorAll(".how-step, .cap-card").forEach(reveal);
 }
 
 // ---- Custom AI chatbot (the n8n "RePurpose Pharma Chatbot", via the /api/chat proxy) ----
@@ -92,17 +106,23 @@ async function chatSend(text, box) {
 }
 
 // full page (opened by the big hero CTA)
+function showLandingSections() {
+  $("#ai-page").classList.add("hidden");
+  $("#results").classList.add("hidden");
+  $("#search-anchor").classList.remove("hidden");
+  $("#landing").classList.remove("hidden");
+}
 function openAIPage() {
+  $("#search-anchor").classList.add("hidden");   // hide the hero so the AI page shows first
   $("#landing").classList.add("hidden");
   $("#results").classList.add("hidden");
   $("#ai-page").classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "auto" });
   const box = $("#ai-messages");
   if (!box.dataset.greeted) { chatAddMessage(box, CHAT_GREETING, "bot"); box.dataset.greeted = "1"; }
 }
 function closeAIPage() {
-  $("#ai-page").classList.add("hidden");
-  $("#landing").classList.remove("hidden");
+  showLandingSections();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -118,6 +138,8 @@ function closeChatPopup() { $("#chat-modal").classList.add("hidden"); }
 // ---- search flow ----
 async function runSearch(query) {
   $("#search-input").value = query;
+  $("#search-anchor").classList.add("hidden");
+  $("#ai-page").classList.add("hidden");
   $("#landing").classList.add("hidden");
   $("#results").classList.remove("hidden");
   $("#report").classList.add("hidden");
@@ -143,8 +165,7 @@ async function runSearch(query) {
 }
 
 function goHome() {
-  $("#results").classList.add("hidden");
-  $("#landing").classList.remove("hidden");
+  showLandingSections();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -232,6 +253,7 @@ function sectionTitle(title, sub) {
   const s = el("section", "section");
   s.appendChild(el("h2", "section-title", esc(title)));
   if (sub) s.appendChild(el("p", "section-sub", esc(sub)));
+  reveal(s);
   return s;
 }
 
@@ -337,6 +359,7 @@ function drugCard(c, featured, isExisting) {
 
   // clicking the card (but not a button / link / input inside it) opens the detail modal
   card.onclick = (e) => { if (e.target.closest("a, button, input")) return; openModal(c); };
+  reveal(card);
   return card;
 }
 
@@ -573,16 +596,29 @@ $("#ai-nav-btn").addEventListener("click", openChatPopup);
 $("#ai-cta").addEventListener("click", openAIPage);
 $("#ai-back").addEventListener("click", closeAIPage);
 $("#chat-modal-close").addEventListener("click", closeChatPopup);
-$("#ai-chat-form").addEventListener("submit", e => {
+
+// "How it works" should leave the AI page / results, then scroll to the How section
+$("#nav-how").addEventListener("click", e => {
   e.preventDefault();
-  const input = $("#ai-chat-input");
-  const t = input.value.trim();
-  if (t) { chatSend(t, $("#ai-messages")); input.value = ""; }
+  showLandingSections();
+  setTimeout(() => document.getElementById("how").scrollIntoView({ behavior: "smooth" }), 40);
 });
-$("#chat-modal-form").addEventListener("submit", e => {
-  e.preventDefault();
-  const input = $("#chat-modal-input");
-  const t = input.value.trim();
-  if (t) { chatSend(t, $("#chat-modal-messages")); input.value = ""; }
-});
+
+// multi-line chat input: auto-grow, Enter = send, Shift+Enter = new line (like ChatGPT)
+function setupChatInput(formId, inputId, box) {
+  const form = $("#" + formId), input = $("#" + inputId);
+  const grow = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 150) + "px"; };
+  const send = () => {
+    const t = input.value.trim();
+    if (t) { chatSend(t, box()); input.value = ""; grow(); }
+  };
+  input.addEventListener("input", grow);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  form.addEventListener("submit", e => { e.preventDefault(); send(); });
+}
+setupChatInput("ai-chat-form", "ai-chat-input", () => $("#ai-messages"));
+setupChatInput("chat-modal-form", "chat-modal-input", () => $("#chat-modal-messages"));
+
 window.goHome = goHome;

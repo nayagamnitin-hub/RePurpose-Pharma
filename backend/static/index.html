@@ -17,7 +17,7 @@
         <span class="brand-mark">✚</span> RePurpose
       </a>
       <nav class="header-nav">
-        <a href="#how">How it works</a>
+        <a href="#how" id="nav-how">How it works</a>
         <button class="btn btn-primary" id="ai-nav-btn">💬 Talk to AI</button>
       </nav>
     </div>
@@ -133,8 +133,8 @@
     <section class="ai-chat">
       <div id="ai-messages" class="ai-messages"></div>
       <form id="ai-chat-form" class="ai-chat-form">
-        <input id="ai-chat-input" autocomplete="off"
-               placeholder="Ask about a drug, a goal, or paste a study…" />
+        <textarea id="ai-chat-input" rows="1" autocomplete="off"
+               placeholder="Ask about a drug, a goal, or paste a study…  (Shift+Enter for a new line)"></textarea>
         <button class="btn btn-primary" type="submit">Send</button>
       </form>
       <p class="disclaimer-mini">Research &amp; education only. Not medical advice.</p>
@@ -163,7 +163,8 @@
       </div>
       <div id="chat-modal-messages" class="ai-messages"></div>
       <form id="chat-modal-form" class="ai-chat-form">
-        <input id="chat-modal-input" autocomplete="off" placeholder="Ask the AI…" />
+        <textarea id="chat-modal-input" rows="1" autocomplete="off"
+               placeholder="Ask the AI…  (Shift+Enter = new line)"></textarea>
         <button class="btn btn-primary" type="submit">Send</button>
       </form>
     </div>
