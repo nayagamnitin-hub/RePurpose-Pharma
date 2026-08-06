@@ -229,6 +229,34 @@ _CAPABILITIES = (
     "What would you like to dig into?"
 )
 
+# System prompt for the DIRECT-Groq fallback (used only when the n8n webhook is unreachable), so the
+# chat keeps working. Mirrors the n8n agent's persona and the app's own healthy Groq key.
+_CHAT_SYS = (
+    "You are RePurpose's pharmacology assistant, a PhD-level clinical pharmacologist for a drug-"
+    "repurposing RESEARCH tool. You help with drugs, mechanisms, pharmacokinetics, supplements, "
+    "conditions, and health/mind/performance goals, as research and educational information, NOT "
+    "medical advice. Match the depth of the question: for deep or technical questions, reason "
+    "mechanistically and thoroughly; for simple ones, be crisp. Format in clean Markdown: '## ' "
+    "topic and '### ' sub-topic headings, '**bold**' key terms, '- ' bullets, and a '|'-pipe table "
+    "with a '---' separator when comparing options. Use the conversation to resolve references like "
+    "'it' or 'that stack'. Stay on medicine/biology/health; if a request is genuinely unrelated, "
+    "briefly redirect. Never fabricate citations. Finish every sentence and end substantive answers "
+    "with one sharp follow-up question."
+)
+
+
+def _direct_llm_reply(message: str) -> str | None:
+    """Fallback answer via the app's own (healthy) Groq key when the n8n webhook is down."""
+    try:
+        provider = get_provider()
+        if not provider.live:
+            return None
+        raw = provider.complete(_CHAT_SYS, message, temperature=0.4)
+        reply = _strip_thinking(raw).strip()
+        return reply or None
+    except Exception:
+        return None
+
 
 def _smalltalk_reply(message: str) -> str | None:
     """Warmly handle greetings / meta questions / thanks without hitting the n8n topic guard."""
@@ -388,20 +416,39 @@ def chat(req: ChatRequest) -> dict:
     import time
 
     from app.clients.base import make_client
-    # Retry with backoff: n8n/Groq can throw a transient 500 under a burst (rate limit); a short
-    # wait clears it, so a normal one-at-a-time user should effectively never see a failure.
-    for attempt in range(3):
+    # Prefer the n8n workflow (custom topic-guard + memory), retrying briefly on a transient hiccup.
+    for attempt in range(2):
         try:
             with make_client() as http:
                 r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
                 r.raise_for_status()
                 data = r.json()
             raw = data.get("reply") or data.get("output") or data.get("text") or ""
-            return {"reply": _strip_thinking(raw)}
+            reply = _strip_thinking(raw)
+            if reply and reply != "(the assistant returned no text)":
+                return {"reply": reply}
         except Exception:
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))  # 1.5s, then 3s
-    return {"reply": "Sorry, the assistant is briefly busy. Give it a moment and ask again."}
+            pass
+        if attempt == 0:
+            time.sleep(0.8)
+
+    # n8n is unavailable (e.g. its Groq credential hit a limit). Fall back to the app's OWN Groq key
+    # so the chat keeps working. Use a LEAN prompt (persona + style already live in _CHAT_SYS) to keep
+    # token use low, since Groq's free tier is rate-limited per minute.
+    lean = []
+    if goal:
+        lean.append(f"[The user is exploring drug repurposing for '{goal}'.]")
+    if transcript:
+        lean.append(f"Conversation so far:\n{transcript}")
+    if study:
+        lean.append(f"Referenced study ({label}):\n\"\"\"\n{study}\n\"\"\"\nSummarize it briefly, then reason "
+                    f"whether the drug could be repurposed for {goal or 'the goal'} (hypothesis for research).")
+    lean.append(f"User: {req.message}")
+    direct = _direct_llm_reply("\n\n".join(lean))
+    if direct:
+        return {"reply": direct}
+    return {"reply": "Sorry, the assistant is briefly busy (the free AI tier is rate-limited). "
+                     "Wait about a minute and ask again."}
 
 
 def _strip_thinking(reply: str) -> str:
