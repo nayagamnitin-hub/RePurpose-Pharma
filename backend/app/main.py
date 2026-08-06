@@ -216,6 +216,7 @@ class ChatRequest(BaseModel):
     message: str
     sessionId: str = "web"
     context: str = ""
+    history: list[dict] = []  # recent [{role, text}] turns, so references like "it" always resolve
 
 
 _CAPABILITIES = (
@@ -244,6 +245,26 @@ def _smalltalk_reply(message: str) -> str | None:
     if len(m) < 40 and (m in ("help",) or any(k in m for k in meta)):
         return _CAPABILITIES
     return None
+
+
+def _format_history(history: list[dict], max_turns: int = 8, max_chars: int = 2600) -> str:
+    """Render the last few chat turns as a compact transcript for pronoun/context resolution."""
+    if not history:
+        return ""
+    lines = []
+    for turn in history[-max_turns:]:
+        role = (turn.get("role") or "").lower()
+        text = (turn.get("text") or "").strip()
+        if not text:
+            continue
+        who = "User" if role in ("user", "human") else "Assistant"
+        if len(text) > 700:  # trim long prior answers so we stay within budget
+            text = text[:700] + "…"
+        lines.append(f"{who}: {text}")
+    transcript = "\n".join(lines)
+    if len(transcript) > max_chars:  # keep the most recent, drop the oldest
+        transcript = transcript[-max_chars:]
+    return transcript
 
 
 def _study_context(message: str) -> tuple[str | None, str | None]:
@@ -313,6 +334,15 @@ def chat(req: ChatRequest) -> dict:
     goal = (req.context or "").strip()
     if goal:
         parts.append(f"[Context: the user is exploring drug REPURPOSING for '{goal}' and is viewing those results.]")
+
+    # Thread the recent conversation so follow-ups and references ("it", "that stack", "how is it
+    # different") always resolve to the right subject, independent of the n8n memory node.
+    transcript = _format_history(req.history)
+    if transcript:
+        parts.append(
+            "[Conversation so far, for context. Resolve any pronoun or reference in the new message "
+            f"(e.g. 'it', 'that', 'this stack') against it:\n{transcript}\n]"
+        )
     try:
         label, study = _study_context(req.message)
     except Exception:
@@ -343,17 +373,24 @@ def chat(req: ChatRequest) -> dict:
             f"drugs, supplements, mechanisms and options (as research information, not medical advice). "
             f"Only politely decline if the request is genuinely unrelated to medicine, health, or biology."
         )
-    # help follow-ups + avoid mid-sentence cutoffs from the model's token limit
+    # Answer with real depth and rich, readable structure (the user wants expert, Gemini-quality
+    # answers, not shallow summaries). Match the depth of the question.
     parts.append(
-        "(Use the conversation so far to understand follow-ups and references like 'them', 'it', "
-        "'those', or a lone '?'. Give a COMPLETE answer that finishes its last sentence; keep it "
-        "reasonably concise so it fits, and for long topics use a compact ranked or bulleted list of "
-        "the key points rather than a long essay.)"
+        "STYLE: Answer as a PhD-level clinical pharmacologist, matching the question's depth. For "
+        "deep/technical questions reason mechanistically (receptors, pathways, PK: onset, Tmax, "
+        "half-life, CYP, bioavailability) and cover EVERY angle raised; don't oversimplify. Format in "
+        "Markdown: '## ' topic and '### ' sub-topic headings, '**bold**' key terms, '- ' bullets, and "
+        "a '|'-pipe table with a '---' separator when comparing options. Resolve references (it/that/"
+        "this) from the conversation. Finish every sentence and end with one sharp follow-up question."
     )
     message = "\n\n".join(parts)
 
+    import time
+
     from app.clients.base import make_client
-    for _ in range(2):  # retry once on a transient n8n/network hiccup
+    # Retry with backoff: n8n/Groq can throw a transient 500 under a burst (rate limit); a short
+    # wait clears it, so a normal one-at-a-time user should effectively never see a failure.
+    for attempt in range(3):
         try:
             with make_client() as http:
                 r = http.post(url, json={"message": message, "sessionId": req.sessionId}, timeout=120.0)
@@ -362,8 +399,9 @@ def chat(req: ChatRequest) -> dict:
             raw = data.get("reply") or data.get("output") or data.get("text") or ""
             return {"reply": _strip_thinking(raw)}
         except Exception:
-            pass
-    return {"reply": "Sorry, I couldn't reach the assistant just now. Please try again in a moment."}
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))  # 1.5s, then 3s
+    return {"reply": "Sorry, the assistant is briefly busy. Give it a moment and ask again."}
 
 
 def _strip_thinking(reply: str) -> str:

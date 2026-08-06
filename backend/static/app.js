@@ -87,18 +87,29 @@ function chatTyping(box) {
   return msg;
 }
 
+// shared across both chat surfaces (they share one session), so follow-ups keep their context
+const CHAT_HISTORY = [];
+
 async function chatSend(text, box) {
   chatAddMessage(box, text, "user");
   const typing = chatTyping(box);
   try {
     const res = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, sessionId: aiSessionId(), context: CURRENT_QUERY }),
+      body: JSON.stringify({
+        message: text,
+        sessionId: aiSessionId(),
+        context: CURRENT_QUERY,
+        history: CHAT_HISTORY.slice(-8),  // prior turns, so "it"/"that stack" resolve
+      }),
     });
     const data = await res.json();
+    const reply = data.reply || "(no response)";
     typing.classList.remove("typing");
-    typing.innerHTML = mdLite(data.reply || "(no response)");
+    typing.innerHTML = mdLite(reply);
     box.scrollTop = box.scrollHeight;
+    CHAT_HISTORY.push({ role: "user", text }, { role: "assistant", text: reply });
+    if (CHAT_HISTORY.length > 24) CHAT_HISTORY.splice(0, CHAT_HISTORY.length - 24);
   } catch (e) {
     typing.classList.remove("typing");
     typing.textContent = "Couldn't reach the assistant: " + e.message;
@@ -544,34 +555,55 @@ function mdLite(text) {
     if (inUl) { html += "</ul>"; inUl = false; }
     if (inOl) { html += "</ol>"; inOl = false; }
   };
-  for (let raw of lines) {
-    // inline: **bold** and *italic* (italic won't touch "* " bullets)
-    let line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-                  .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
-    const t = line.trim();
+  // inline: **bold** and *italic* (italic won't touch "* " bullets)
+  const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                         .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
+  const isRow = (s) => /^\s*\|.*\|\s*$/.test(s);
+  const isSep = (s) => /-/.test(s) && /^\s*\|?[\s:|-]+\|?\s*$/.test(s);
+  const cells = (s) => s.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
 
-    // markdown heading:  #, ##, ### ... (strip the hashes so they never show as text)
-    const h = t.match(/^#{1,6}\s+(.*?)\s*#*$/);
-    if (h) { closeLists(); html += `<h4>${h[1]}</h4>`; continue; }
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const t = raw.trim();
+
+    // markdown table: header row, a --- separator row, then body rows
+    if (isRow(raw) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      closeLists();
+      let tbl = "<div class='ai-table-wrap'><table><thead><tr>"
+              + cells(raw).map(c => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
+      i += 2;
+      for (; i < lines.length && isRow(lines[i]); i++) {
+        tbl += "<tr>" + cells(lines[i]).map(c => `<td>${inline(c)}</td>`).join("") + "</tr>";
+      }
+      i--;
+      html += tbl + "</tbody></table></div>";
+      continue;
+    }
+
+    const line = inline(raw);
+
+    // heading:  #/## = topic (h3), ###+ = subtopic (h4). Hashes are stripped either way.
+    const h = t.match(/^(#{1,6})\s+(.*?)\s*#*$/);
+    if (h) { closeLists(); const tag = h[1].length <= 2 ? "h3" : "h4"; html += `<${tag}>${inline(h[2])}</${tag}>`; continue; }
 
     // bulleted list
-    if (/^\s*[-*•]\s+/.test(line)) {
+    if (/^\s*[-*•]\s+/.test(raw)) {
       if (inOl) { html += "</ol>"; inOl = false; }
       if (!inUl) { html += "<ul>"; inUl = true; }
-      html += `<li>${line.replace(/^\s*[-*•]\s+/, "")}</li>`;
+      html += `<li>${inline(raw.replace(/^\s*[-*•]\s+/, ""))}</li>`;
       continue;
     }
     // numbered list
-    if (/^\s*\d+[.)]\s+/.test(line)) {
+    if (/^\s*\d+[.)]\s+/.test(raw)) {
       if (inUl) { html += "</ul>"; inUl = false; }
       if (!inOl) { html += "<ol>"; inOl = true; }
-      html += `<li>${line.replace(/^\s*\d+[.)]\s+/, "")}</li>`;
+      html += `<li>${inline(raw.replace(/^\s*\d+[.)]\s+/, ""))}</li>`;
       continue;
     }
 
     closeLists();
     if (!t) continue;
-    if (/^<strong>.*<\/strong>:?$/.test(t)) html += `<h4>${t}</h4>`;  // a bold-only line acts as a subheading
+    if (/^<strong>.*<\/strong>:?$/.test(line.trim())) html += `<h4>${line.trim()}</h4>`;  // bold-only line = subheading
     else html += `<p>${line}</p>`;
   }
   closeLists();

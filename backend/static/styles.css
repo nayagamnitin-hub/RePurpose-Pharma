@@ -273,13 +273,24 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
   box-shadow: 0 2px 6px rgba(120,80,40,.28); }
 .ai-msg { max-width: 82%; padding: 11px 15px; border-radius: 18px; font-size: 15px; line-height: 1.55; white-space: pre-wrap;
   box-shadow: 0 1px 2px rgba(60,40,20,.06); word-wrap: break-word; overflow-wrap: anywhere; }
-.ai-msg.bot { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 5px; }
+.ai-msg.bot { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 5px; max-width: 90%; }
 .ai-msg.user { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; border-bottom-right-radius: 5px; }
 .ai-msg.bot strong { color: var(--accent-dark); }
 .ai-msg p:first-child { margin-top: 0; } .ai-msg p:last-child { margin-bottom: 0; }
 .ai-msg ul, .ai-msg ol { margin: 6px 0; padding-left: 18px; }
-.ai-msg h4, .ask-answer h4 { margin: 8px 0 4px; font-size: 15px; font-weight: 700; }
-.ai-msg h4:first-child, .ask-answer h4:first-child { margin-top: 0; }
+/* topic heading (from #/##) and subtopic heading (from ###/bold-line) */
+.ai-msg h3, .ask-answer h3 { margin: 14px 0 6px; font-size: 16.5px; font-weight: 800; letter-spacing: -.01em;
+  color: var(--accent-dark); padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.ai-msg h4, .ask-answer h4 { margin: 10px 0 4px; font-size: 15px; font-weight: 700; color: var(--ink); }
+.ai-msg h3:first-child, .ai-msg h4:first-child, .ask-answer h3:first-child, .ask-answer h4:first-child { margin-top: 0; }
+.ai-msg li { margin: 2px 0; }
+
+/* comparison tables */
+.ai-table-wrap { overflow-x: auto; margin: 10px 0; -webkit-overflow-scrolling: touch; }
+.ai-msg table, .ask-answer table { border-collapse: collapse; width: 100%; font-size: 13.5px; white-space: normal; }
+.ai-msg th, .ai-msg td, .ask-answer th, .ask-answer td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+.ai-msg thead th, .ask-answer thead th { background: var(--bg); color: var(--accent-dark); font-weight: 700; }
+.ai-msg tbody tr:nth-child(even) td { background: rgba(0,0,0,.02); }
 @keyframes msgIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 
 /* typing indicator */
