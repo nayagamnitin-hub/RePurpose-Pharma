@@ -374,11 +374,13 @@ def _strip_thinking(reply: str) -> str:
     reply = re.sub(r"(?is)<think>.*?</think>\s*", "", reply)
     if "</think>" in reply:
         reply = reply.split("</think>")[-1]
-    # malformed: an unclosed <think> means the answer was cut off inside the reasoning
+    # malformed: an unclosed <think> means the answer was cut off inside the reasoning.
+    # Salvage anything usable that appears after the opening tag; otherwise ask to retry.
     if re.search(r"(?i)<think>", reply):
-        return ("The assistant's answer got cut off while reasoning. Please try again or rephrase. "
-                "(Tip: switching the n8n Groq model to a non-reasoning model like "
-                "llama-3.3-70b-versatile gives clean, complete answers.)")
+        tail = re.split(r"(?i)<think>", reply)[-1].strip()
+        if len(tail) > 40:
+            return tail
+        return "Let me try that again, give me one more go or rephrase it slightly."
     return reply.strip() or "(the assistant returned no text)"
 
 
