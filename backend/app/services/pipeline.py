@@ -113,6 +113,21 @@ def build_report(query: str) -> RepurposingReport:
     except Exception:
         pass
 
+    # Deterministic guardrail (independent of the LLM): a drug that is neither approved nor
+    # past phase 3 cannot be "established". This catches investigational agents (e.g. phase-2
+    # dimethylcurcumin) that the LLM verify pass occasionally leaves in the established list.
+    still_existing, demoted = [], []
+    for c in existing:
+        if not c.is_approved and c.max_phase is not None and c.max_phase < 4.0:
+            c.prospective = True
+            c.labels = [l for l in c.labels if l not in ("Established", "Approved")]
+            if c.clinical_stage in ("Approved / established", None):
+                c.clinical_stage = "Investigational"
+            demoted.append(c)
+        else:
+            still_existing.append(c)
+    existing, repurposing = still_existing, demoted + repurposing
+
     _assign_labels(existing, is_existing=True)
     _assign_labels(repurposing, is_existing=False)
 
