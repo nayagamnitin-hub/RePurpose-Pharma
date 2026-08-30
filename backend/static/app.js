@@ -90,7 +90,12 @@ function chatTyping(box) {
 // shared across both chat surfaces (they share one session), so follow-ups keep their context
 const CHAT_HISTORY = [];
 
-async function chatSend(text, box) {
+// The assistant is only told what you searched when you open it from the results you are
+// looking at. Opened from the home page it starts clean, with no memory of an earlier search.
+const resultsOnScreen = () => !$("#results").classList.contains("hidden");
+const popupContext = () => (resultsOnScreen() ? CURRENT_QUERY : "");
+
+async function chatSend(text, box, context) {
   chatAddMessage(box, text, "user");
   const typing = chatTyping(box);
   try {
@@ -99,7 +104,7 @@ async function chatSend(text, box) {
       body: JSON.stringify({
         message: text,
         sessionId: aiSessionId(),
-        context: CURRENT_QUERY,
+        context: context || "",
         history: CHAT_HISTORY.slice(-8),  // prior turns, so "it"/"that stack" resolve
       }),
     });
@@ -122,6 +127,7 @@ function showLandingSections() {
   $("#results").classList.add("hidden");
   $("#search-anchor").classList.remove("hidden");
   $("#landing").classList.remove("hidden");
+  CURRENT_QUERY = "";   // left the results, so the chat no longer speaks to that search
 }
 function openAIPage() {
   $("#search-anchor").classList.add("hidden");   // hide the hero so the AI page shows first
@@ -145,6 +151,21 @@ function openChatPopup() {
   $("#chat-modal-input").focus();
 }
 function closeChatPopup() { $("#chat-modal").classList.add("hidden"); }
+
+// Wipe the conversation everywhere: both transcripts, the history we send, and the session id
+// the assistant keys its own memory on. Both surfaces share one session, so both are reset.
+function startNewChat() {
+  CHAT_HISTORY.length = 0;
+  CURRENT_QUERY = "";
+  try { localStorage.removeItem("aiSession"); } catch (e) {}
+  [["#ai-messages", true], ["#chat-modal-messages", false]].forEach(([sel, greet]) => {
+    const box = $(sel);
+    box.innerHTML = "";
+    delete box.dataset.greeted;
+    if (greet) { chatAddMessage(box, CHAT_GREETING, "bot"); box.dataset.greeted = "1"; }
+  });
+  $("#ai-chat-input").focus();
+}
 
 // ---- search flow ----
 async function runSearch(query) {
@@ -499,11 +520,11 @@ async function loadStudies(drug, box, btn) {
     const studies = data.studies || [];
     if (!studies.length) { box.innerHTML = `<p class="muted-sm">No PubMed studies found for this drug.</p>`; }
     else {
-      const ul = el("ul");
+      const ul = el("ul", "study-list");
       studies.forEach(s => {
         const li = el("li");
-        li.innerHTML = `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(s.pmid)}/" target="_blank" rel="noopener">PMID ${esc(s.pmid)}</a>`
-          + (s.snippet ? `: ${esc(s.snippet.slice(0, 160))}…` : "");
+        const title = (s.title || `PubMed record ${s.pmid}`).toUpperCase();
+        li.innerHTML = `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(s.pmid)}/" target="_blank" rel="noopener">${esc(title)}</a>`;
         ul.appendChild(li);
       });
       box.innerHTML = ""; box.appendChild(ul);
@@ -627,6 +648,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal
 $("#ai-nav-btn").addEventListener("click", openChatPopup);
 $("#ai-cta").addEventListener("click", openAIPage);
 $("#ai-back").addEventListener("click", closeAIPage);
+$("#ai-new").addEventListener("click", startNewChat);
 $("#chat-modal-close").addEventListener("click", closeChatPopup);
 
 // "How it works" should leave the AI page / results, then scroll to the How section
@@ -637,12 +659,12 @@ $("#nav-how").addEventListener("click", e => {
 });
 
 // multi-line chat input: auto-grow, Enter = send, Shift+Enter = new line (like ChatGPT)
-function setupChatInput(formId, inputId, box) {
+function setupChatInput(formId, inputId, box, context) {
   const form = $("#" + formId), input = $("#" + inputId);
   const grow = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 150) + "px"; };
   const send = () => {
     const t = input.value.trim();
-    if (t) { chatSend(t, box()); input.value = ""; grow(); }
+    if (t) { chatSend(t, box(), context ? context() : ""); input.value = ""; grow(); }
   };
   input.addEventListener("input", grow);
   input.addEventListener("keydown", e => {
@@ -650,7 +672,8 @@ function setupChatInput(formId, inputId, box) {
   });
   form.addEventListener("submit", e => { e.preventDefault(); send(); });
 }
-setupChatInput("ai-chat-form", "ai-chat-input", () => $("#ai-messages"));
-setupChatInput("chat-modal-form", "chat-modal-input", () => $("#chat-modal-messages"));
+// the full AI page is always a clean consult; the docked popup speaks to the results on screen
+setupChatInput("ai-chat-form", "ai-chat-input", () => $("#ai-messages"), () => "");
+setupChatInput("chat-modal-form", "chat-modal-input", () => $("#chat-modal-messages"), popupContext);
 
 window.goHome = goHome;

@@ -33,14 +33,18 @@ def fetch_studies(term: str, retmax: int = 8, with_snippets: int = 4) -> list[Li
             pmids = ncbi.search_pmids(term, retmax=retmax)
         except Exception:
             return refs
+        try:
+            titles = ncbi.esummary_titles(pmids)  # clean title for every study, one call
+        except Exception:
+            titles = {}
         for i, pmid in enumerate(pmids):
             snippet = None
-            if i < with_snippets:
+            if i < with_snippets:  # snippets are for the AI's evidence, not for display
                 try:
                     snippet = extract_text_from_bioc(ncbi.fetch_abstract_bioc(pmid))[:600]
                 except Exception:
                     pass
-            refs.append(LiteratureRef(pmid=pmid, snippet=snippet))
+            refs.append(LiteratureRef(pmid=pmid, title=titles.get(pmid), snippet=snippet))
     return refs
 
 

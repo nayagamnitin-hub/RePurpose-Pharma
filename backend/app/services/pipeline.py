@@ -146,9 +146,50 @@ def build_report(query: str) -> RepurposingReport:
     return report
 
 
+# Deterministic notes for well-known conditions with no cure, so the warning ALWAYS appears
+# (independent of the live model, which may be rate limited). Matched by substring on the goal.
+_NO_CURE_NOTES = {
+    ("als", "amyotrophic lateral sclerosis", "lou gehrig"):
+        "ALS (amyotrophic lateral sclerosis) has no known cure. Current drugs such as riluzole and edaravone "
+        "mainly slow progression and manage symptoms; they do not stop or reverse the disease.",
+    ("parkinson",):
+        "Parkinson's disease has no known cure. Available treatments manage symptoms and improve quality of "
+        "life, but do not halt the underlying neurodegeneration.",
+    ("alzheimer", "dementia"):
+        "Alzheimer's disease has no known cure. Most treatments modestly manage symptoms; newer agents may "
+        "slow decline somewhat but do not reverse the disease.",
+    ("huntington",):
+        "Huntington's disease has no known cure. Current treatments manage symptoms such as movement and mood "
+        "rather than stopping progression.",
+    ("multiple sclerosis", "ms "):
+        "Multiple sclerosis has no known cure. Disease-modifying therapies reduce relapses and slow progression "
+        "but do not cure the condition.",
+    ("type 1 diabetes",):
+        "Type 1 diabetes has no known cure. It is managed with insulin and monitoring rather than cured.",
+    ("cystic fibrosis",):
+        "Cystic fibrosis has no known cure. Modern therapies greatly improve symptoms and lifespan but manage "
+        "rather than cure the disease.",
+    ("duchenne", "muscular dystrophy"):
+        "Muscular dystrophy has no known cure. Treatments aim to slow muscle loss and manage symptoms.",
+}
+
+
+def _static_overview_note(subject: str) -> str | None:
+    s = (subject or "").lower()
+    for keys, note in _NO_CURE_NOTES.items():
+        if any(k in s for k in keys):
+            return note
+    return None
+
+
 def _overview_note(subject: str, provider) -> str | None:
     """1-2 plain sentences on whether the condition has a cure, or if treatments only slow/manage it."""
-    if not provider.live or not subject:
+    if not subject:
+        return None
+    static = _static_overview_note(subject)  # deterministic first, so it shows even if the model is down
+    if static:
+        return static
+    if not provider.live:
         return None
     system = (
         "In 1 to 2 plain sentences, state whether the condition has a known cure. If there is NO cure "

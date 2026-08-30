@@ -61,6 +61,27 @@ class NcbiClient:
         data = r.json()
         return data.get("esearchresult", {}).get("idlist", [])
 
+    # 1b. E-utilities: PMIDs -> titles (one call) --------------------------
+    def esummary_titles(self, pmids: list[str]) -> dict[str, str]:
+        """Map each PMID to its article title in a single esummary call (clean study listing)."""
+        if not pmids:
+            return {}
+        params = {
+            **_common_params(),
+            "db": "pubmed",
+            "id": ",".join(pmids),
+            "retmode": "json",
+        }
+        r = self._http.get(f"{EUTILS}/esummary.fcgi", params=params)
+        r.raise_for_status()
+        result = r.json().get("result", {})
+        out: dict[str, str] = {}
+        for uid in result.get("uids", []):
+            title = (result.get(uid, {}) or {}).get("title")
+            if title:
+                out[uid] = title.strip().rstrip(".")
+        return out
+
     # 2. BioC: PMID -> abstract text --------------------------------------
     def fetch_abstract_bioc(self, pmid: str, encoding: str = "unicode") -> dict[str, Any]:
         url = f"{BIOC_PUBMED}/BioC_json/{pmid}/{encoding}"

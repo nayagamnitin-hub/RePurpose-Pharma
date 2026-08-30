@@ -125,6 +125,46 @@ _EXPLAIN_SYS = (
 )
 
 
+def _fallback_explanation(req: "ExplainRequest") -> str:
+    """Deterministic badge explanation, used when the live model is unavailable (rate limited), so a
+    badge click ALWAYS explains itself instead of erroring."""
+    label = (req.label or "").lower()
+    drug = req.drug or "This drug"
+    eff, safe, conf = req.effectiveness, req.safety, req.confidence
+    if "black" in label:
+        return (f"A black-box warning is the FDA's strongest safety caution, flagging a serious potential risk. "
+                f"It does not mean {drug} cannot be used, but that it needs careful, monitored use. "
+                f"Click Learn More to see the specific safety studies.")
+    if "approved" in label or "established" in label:
+        return (f"'Approved' means regulators reviewed the clinical trial evidence for {drug} and judged its "
+                f"benefits to outweigh its risks, making it a standard, established treatment. "
+                f"Click Learn More to see the supporting studies.")
+    if "most side" in label or "harsh" in label or "side effect" in label:
+        return (f"This flags that {drug} carries a heavier side-effect burden than the other options listed here "
+                f"(safety score {safe}%). It can still be effective; it is about the tolerability trade-off.")
+    if "safest" in label or "low side" in label or "safe" in label:
+        return (f"This means {drug} has a relatively favorable safety and tolerability profile (safety score "
+                f"{safe}%) compared with the other options in this list. Individual responses still vary.")
+    if "most effective" in label or "effective" in label:
+        return (f"'Most effective' is a comparison WITHIN this list: {drug} has the highest estimated "
+                f"effectiveness ({eff}%) for this goal here. It is a relative ranking, not an absolute claim.")
+    if "confidence" in label:
+        if req.established:
+            return (f"Confidence ({conf}%) reflects how strong the case is that {drug} helps this goal. It is high "
+                    f"here because this is a proven, approved option.")
+        return (f"Confidence ({conf}%) reflects the mechanistic plausibility that {drug} could help this goal, "
+                f"based on the target or pathway it acts on. For a repurposing candidate this is a research "
+                f"hypothesis, not proven clinical evidence. Click Learn More to see the studies.")
+    if "effectiveness" in label:
+        return (f"The effectiveness score ({eff}%) estimates how well {drug} is expected to help this goal, based "
+                f"on its mechanism and the available evidence.")
+    if "safety" in label:
+        return (f"The safety score ({safe}%) estimates how well tolerated {drug} is, from its known side-effect "
+                f"profile. Higher means milder or fewer expected adverse effects.")
+    return (f"This describes {drug}'s profile for the goal you are exploring: effectiveness {eff}%, safety "
+            f"{safe}%, confidence {conf}%.")
+
+
 @app.post("/api/explain")
 def explain(req: ExplainRequest) -> dict:
     from app.textutil import no_em_dashes
@@ -147,9 +187,10 @@ def explain(req: ExplainRequest) -> dict:
         "- otherwise: explain the label plainly."
     )
     try:
-        return {"explanation": no_em_dashes(provider.complete(_EXPLAIN_SYS, facts, temperature=0.2))}
+        text = provider.complete(_EXPLAIN_SYS, facts, temperature=0.2).strip()
+        return {"explanation": no_em_dashes(text) if text else _fallback_explanation(req)}
     except Exception:
-        return {"explanation": "Couldn't load an explanation just now. Please try again."}
+        return {"explanation": _fallback_explanation(req)}
 
 
 class EvidenceRequest(BaseModel):
@@ -206,10 +247,25 @@ def evidence(req: EvidenceRequest) -> dict:
               "sentences. No em dashes.")
     prompt = f"Drug: {req.drug}\nGoal: {req.goal}\nAspect the user asked about: {req.label or 'overall'}\n\nStudy snippets:\n{snippets or '(none retrieved)'}\n\n{task}"
     try:
-        summary = no_em_dashes(provider.complete(system, prompt, temperature=0.2))
+        text = provider.complete(system, prompt, temperature=0.2).strip()
+        summary = no_em_dashes(text) if text else _evidence_fallback(req, refs)
     except Exception:
-        summary = "Couldn't load the evidence summary just now."
+        summary = _evidence_fallback(req, refs)
     return {"summary": summary, "studies": refs}
+
+
+def _evidence_fallback(req: "EvidenceRequest", refs: list) -> str:
+    """Deterministic evidence blurb when the model is unavailable, so 'Learn More' still shows the
+    studies plus a sensible framing instead of an error."""
+    drug = req.drug or "This drug"
+    n = len([r for r in refs if getattr(r, "pmid", None)])
+    tail = (f" The {n} PubMed studies listed below are the primary evidence, open each to read it."
+            if n else " No PubMed studies were retrieved for this specific aspect.")
+    if req.established:
+        return (f"{drug} is used as an established option for {req.goal or 'this goal'}." + tail)
+    return (f"{drug} is an investigational or repurposing candidate for {req.goal or 'this goal'}: the rationale "
+            f"is mechanistic (it acts on {', '.join(req.targets) or 'a relevant target'}), and it should be read "
+            f"as a research hypothesis rather than proven clinical evidence." + tail)
 
 
 class ChatRequest(BaseModel):
@@ -231,6 +287,21 @@ _CAPABILITIES = (
 
 # System prompt for the DIRECT-Groq fallback (used only when the n8n webhook is unreachable), so the
 # chat keeps working. Mirrors the n8n agent's persona and the app's own healthy Groq key.
+# Non-negotiable safety behaviour. A suggestion to ADD a drug is only useful with its interaction
+# profile: e.g. modafinil inhibits CYP2C19, which slows clearance of propranolol, so proposing
+# propranolol for modafinil-driven tachycardia without saying that is actively unsafe.
+_SAFETY_RULE = (
+    "INTERACTIONS (mandatory): the user may already be taking things. Before you suggest adding, "
+    "combining, stacking or switching ANY drug or supplement, state its clinically significant "
+    "interactions with everything the user has mentioned taking. Name the mechanism (CYP inhibition "
+    "or induction and which enzyme, transporters, additive pharmacodynamics, QT prolongation, "
+    "serotonergic or sympathomimetic load, bleeding, sedation, blood pressure), say which direction "
+    "the levels or effect move and what that means in practice, and put the warning WITH the "
+    "suggestion, not in a footnote. If an interaction is dangerous, say so plainly and say what to "
+    "do instead. Never present a combination as an option without its interaction profile, and say "
+    "clearly when something needs a clinician, prescription, or monitoring."
+)
+
 _CHAT_SYS = (
     "You are RePurpose's pharmacology assistant, a PhD-level clinical pharmacologist for a drug-"
     "repurposing RESEARCH tool. You help with drugs, mechanisms, pharmacokinetics, supplements, "
@@ -241,7 +312,7 @@ _CHAT_SYS = (
     "with a '---' separator when comparing options. Use the conversation to resolve references like "
     "'it' or 'that stack'. Stay on medicine/biology/health; if a request is genuinely unrelated, "
     "briefly redirect. Never fabricate citations. Finish every sentence and end substantive answers "
-    "with one sharp follow-up question."
+    "with one sharp follow-up question.\n\n" + _SAFETY_RULE
 )
 
 
@@ -411,6 +482,7 @@ def chat(req: ChatRequest) -> dict:
         "a '|'-pipe table with a '---' separator when comparing options. Resolve references (it/that/"
         "this) from the conversation. Finish every sentence and end with one sharp follow-up question."
     )
+    parts.append(_SAFETY_RULE)
     message = "\n\n".join(parts)
 
     import time
