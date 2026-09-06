@@ -188,7 +188,7 @@ def get_provider() -> LLMProvider:
     if provider == "openrouter" and (settings.llm_api_key or "").startswith("sk-or-"):
         return OpenRouterProvider(
             api_key=settings.llm_api_key,
-            model=settings.llm_model or "google/gemini-2.0-flash-001",
+            model=settings.llm_model or "anthropic/claude-sonnet-5",
         )
     if provider == "groq" and (settings.llm_api_key or "").startswith("gsk_"):
         return GroqProvider(api_key=settings.llm_api_key, model=settings.llm_model or "llama-3.3-70b-versatile")
