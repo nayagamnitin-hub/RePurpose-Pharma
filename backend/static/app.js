@@ -87,6 +87,40 @@ function chatTyping(box) {
   return msg;
 }
 
+// Rotating "thinking" status shown when a reply takes a while (like Claude Code's shimmer lines).
+const STATUS_MSGS = [
+  "The personal AI pharmacologist is thinking…",
+  "Scanning databases…",
+  "Reading studies…",
+  "Analyzing the pharmacology…",
+  "Putting it together…",
+];
+function upgradeToStatus(msg) {
+  if (!msg || !msg.isConnected) return;
+  msg.classList.remove("typing");
+  msg.classList.add("status");
+  msg.innerHTML =
+    '<span class="status-dot"></span>'
+    + `<span class="status-text">${esc(STATUS_MSGS[0])}</span>`
+    + '<button class="status-x" aria-label="Dismiss">×</button>';
+  const textEl = msg.querySelector(".status-text");
+  let i = 0;
+  msg._statusInterval = setInterval(() => {
+    i = (i + 1) % STATUS_MSGS.length;
+    textEl.style.opacity = "0";
+    setTimeout(() => { textEl.textContent = STATUS_MSGS[i]; textEl.style.opacity = "1"; }, 250);
+  }, 2600);
+  msg.querySelector(".status-x").onclick = () => removeIndicator(msg);
+}
+function removeIndicator(msg) {
+  if (!msg) return;
+  if (msg._statusInterval) { clearInterval(msg._statusInterval); msg._statusInterval = null; }
+  const row = msg.closest(".ai-row");
+  if (!row) return;
+  row.classList.add("fade-out");   // smooth exit, then the answer bubble animates in
+  setTimeout(() => row.remove(), 230);
+}
+
 // shared across both chat surfaces (they share one session), so follow-ups keep their context
 const CHAT_HISTORY = [];
 
@@ -98,6 +132,9 @@ const popupContext = () => (resultsOnScreen() ? CURRENT_QUERY : "");
 async function chatSend(text, box, context) {
   chatAddMessage(box, text, "user");
   const typing = chatTyping(box);
+  // if it's slow, upgrade the dots into a rotating status pill after 3s
+  const statusTimer = setTimeout(() => upgradeToStatus(typing), 3000);
+  let reply, ok = false;
   try {
     const res = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -109,15 +146,18 @@ async function chatSend(text, box, context) {
       }),
     });
     const data = await res.json();
-    const reply = data.reply || "(no response)";
-    typing.classList.remove("typing");
-    typing.innerHTML = mdLite(reply);
-    box.scrollTop = box.scrollHeight;
+    reply = data.reply || "(no response)";
+    ok = true;
+  } catch (e) {
+    reply = "Couldn't reach the assistant: " + e.message;
+  }
+  clearTimeout(statusTimer);
+  removeIndicator(typing);              // fade the dots / status pill out cleanly
+  chatAddMessage(box, reply, "bot");    // answer slides in with its own entrance motion
+  box.scrollTop = box.scrollHeight;
+  if (ok) {
     CHAT_HISTORY.push({ role: "user", text }, { role: "assistant", text: reply });
     if (CHAT_HISTORY.length > 24) CHAT_HISTORY.splice(0, CHAT_HISTORY.length - 24);
-  } catch (e) {
-    typing.classList.remove("typing");
-    typing.textContent = "Couldn't reach the assistant: " + e.message;
   }
 }
 
@@ -600,6 +640,9 @@ function mdLite(text) {
       html += tbl + "</tbody></table></div>";
       continue;
     }
+
+    // horizontal rule (---, ***, ___ on their own line): drop it for a clean look
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { closeLists(); continue; }
 
     const line = inline(raw);
 

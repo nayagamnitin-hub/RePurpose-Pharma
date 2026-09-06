@@ -321,6 +321,23 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 .ai-msg.typing .dot:nth-child(3) { animation-delay: .36s; }
 @keyframes typingBounce { 0%, 70%, 100% { transform: translateY(0); opacity: .35; } 35% { transform: translateY(-6px); opacity: 1; } }
 
+/* "thinking" status pill (shown after ~3s of waiting) with a shimmering, rotating message */
+.ai-msg.status { display: inline-flex; align-items: center; gap: 10px; padding: 12px 12px 12px 15px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+  animation: statusPulse 1.2s ease-in-out infinite; }
+@keyframes statusPulse { 0%, 100% { opacity: .3; transform: scale(.75); } 50% { opacity: 1; transform: scale(1); } }
+.status-text { font-size: 14px; font-weight: 500; white-space: nowrap; transition: opacity .25s ease;
+  background: linear-gradient(90deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: statusShimmer 2.2s linear infinite; }
+@keyframes statusShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.status-x { flex-shrink: 0; width: 20px; height: 20px; border: none; border-radius: 50%; cursor: pointer;
+  background: var(--surface-2); color: var(--muted); font-size: 15px; line-height: 1; display: grid; place-items: center;
+  transition: background .15s, color .15s; }
+.status-x:hover { background: var(--accent-soft); color: var(--accent-dark); }
+.ai-row.fade-out { opacity: 0; transform: translateY(-4px); transition: opacity .22s ease, transform .22s ease; }
+@media (prefers-reduced-motion: reduce) { .status-dot, .status-text { animation: none; } }
+
 .ai-chat-form { display: flex; gap: 8px; margin-top: 14px; align-items: flex-end; }
 .ai-chat-form textarea { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 20px; padding: 13px 16px; font: inherit;
   font-size: 15px; line-height: 1.45; outline: none; background: var(--surface); resize: none; min-height: 50px; max-height: 150px;
