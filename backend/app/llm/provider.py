@@ -110,6 +110,45 @@ class GroqProvider:
         return choices[0]["message"]["content"] if choices else ""
 
 
+class OpenRouterProvider:
+    """OpenRouter (OpenAI-compatible gateway to many models). Key starts 'sk-or-'.
+    Pick any model via LLM_MODEL, e.g. 'anthropic/claude-3.5-sonnet', 'google/gemini-2.0-flash-001',
+    'deepseek/deepseek-chat'. Buy credits at https://openrouter.ai/credits."""
+
+    live = True
+    kind = "openrouter"
+
+    def __init__(self, api_key: str, model: str) -> None:
+        from app.clients.base import make_client
+
+        self._http = make_client(base_url="https://openrouter.ai")
+        self._api_key = api_key
+        self._model = model
+
+    def complete(self, system: str, prompt: str, temperature: float = 0.3) -> str:
+        r = self._http.post(
+            "/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+                # OpenRouter uses these for attribution/rankings (optional but recommended)
+                "HTTP-Referer": "https://repurposepharma.com",
+                "X-Title": "RePurpose Pharma",
+            },
+            json={
+                "model": self._model,
+                "temperature": temperature,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+            },
+        )
+        r.raise_for_status()
+        choices = r.json().get("choices", [])
+        return choices[0]["message"]["content"] if choices else ""
+
+
 class OllamaProvider:
     """Local models via Ollama (free, no key). Active when LLM_PROVIDER=ollama."""
 
@@ -146,6 +185,11 @@ def _looks_like_real_gemini_key(key: str | None) -> bool:
 
 def get_provider() -> LLMProvider:
     provider = (settings.llm_provider or "none").lower()
+    if provider == "openrouter" and (settings.llm_api_key or "").startswith("sk-or-"):
+        return OpenRouterProvider(
+            api_key=settings.llm_api_key,
+            model=settings.llm_model or "google/gemini-2.0-flash-001",
+        )
     if provider == "groq" and (settings.llm_api_key or "").startswith("gsk_"):
         return GroqProvider(api_key=settings.llm_api_key, model=settings.llm_model or "llama-3.3-70b-versatile")
     if provider == "gemini" and _looks_like_real_gemini_key(settings.llm_api_key):
