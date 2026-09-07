@@ -191,6 +191,14 @@
     </div>
   </div>
 
+  <!-- Bot protection: one quick human check, then paid AI calls are allowed for a while -->
+  <div id="turnstile-gate" class="turnstile-gate hidden">
+    <span class="turnstile-gate-label">Quick check that you're human…</span>
+    <div id="turnstile-container"></div>
+  </div>
+
   <script src="/app.js"></script>
+  <!-- loaded AFTER app.js so window.onTurnstileReady is already defined when it fires -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileReady&render=explicit" async defer></script>
 </body>
 </html>

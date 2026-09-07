@@ -25,5 +25,12 @@ class Settings(BaseSettings):
     # Custom chatbot: full n8n webhook URL, e.g. https://<your-n8n-host>/webhook/pharma-chat
     n8n_webhook_url: str | None = None
 
+    # Cloudflare Turnstile (bot protection so bots can't drain the paid AI credits).
+    # Protection is ON only when turnstile_secret is set; otherwise the API is open (local dev).
+    turnstile_site_key: str | None = None
+    turnstile_secret: str | None = None
+    turnstile_ttl_hours: int = 12                # how long one human verification lasts
+    turnstile_hostnames: str | None = None        # optional comma-separated allowlist (e.g. repurposepharma.com)
+
 
 settings = Settings()

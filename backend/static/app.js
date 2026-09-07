@@ -136,7 +136,7 @@ async function chatSend(text, box, context) {
   const statusTimer = setTimeout(() => upgradeToStatus(typing), 3000);
   let reply, ok = false;
   try {
-    const res = await fetch("/api/chat", {
+    const res = await apiFetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: text,
@@ -220,7 +220,7 @@ async function runSearch(query) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   try {
-    const res = await fetch(`/api/repurpose?q=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`/api/repurpose?q=${encodeURIComponent(query)}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `Request failed (${res.status})`);
@@ -462,7 +462,7 @@ function openModal(c) {
   $("#modal-overlay").classList.remove("hidden");
   document.body.style.overflow = "hidden";
 
-  fetch("/api/drug", {
+  apiFetch("/api/drug", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: c.name, mechanism: c.mechanism_of_action || "", targets: c.via_targets || [],
@@ -496,7 +496,7 @@ function openExplain(c, label, isExisting) {
     <div id="explain-text"><p class="muted-sm">Loading explanation…</p></div>`;
   $("#explain-overlay").classList.remove("hidden");
   document.body.style.overflow = "hidden";
-  fetch("/api/explain", {
+  apiFetch("/api/explain", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       drug: c.name, label, goal: GOAL_CONTEXT || CURRENT_QUERY || "",
@@ -518,7 +518,7 @@ function addLearnMore(c, isExisting, label) {
   wrap.append(btn, out);
   btn.onclick = () => {
     btn.disabled = true; btn.textContent = "Gathering evidence…";
-    fetch("/api/evidence", {
+    apiFetch("/api/evidence", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         drug: c.name, goal: GOAL_CONTEXT || CURRENT_QUERY || "", established: !!isExisting,
@@ -555,7 +555,7 @@ function metric(label, value, cls) {
 async function loadStudies(drug, box, btn) {
   btn.disabled = true; btn.textContent = "Loading…";
   try {
-    const res = await fetch(`/api/studies?drug=${encodeURIComponent(drug)}&topic=${encodeURIComponent(STUDY_TOPIC)}`);
+    const res = await apiFetch(`/api/studies?drug=${encodeURIComponent(drug)}&topic=${encodeURIComponent(STUDY_TOPIC)}`);
     const data = await res.json();
     const studies = data.studies || [];
     if (!studies.length) { box.innerHTML = `<p class="muted-sm">No PubMed studies found for this drug.</p>`; }
@@ -591,7 +591,7 @@ function buildAsk(c, box) {
     answer.classList.remove("hidden");
     answer.textContent = "Reading the literature…";
     try {
-      const res = await fetch("/api/ask", {
+      const res = await apiFetch("/api/ask", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           drug: c.name, question: q, topic: STUDY_TOPIC,
@@ -720,3 +720,77 @@ setupChatInput("ai-chat-form", "ai-chat-input", () => $("#ai-messages"), () => "
 setupChatInput("chat-modal-form", "chat-modal-input", () => $("#chat-modal-messages"), popupContext);
 
 window.goHome = goHome;
+
+// ===== Cloudflare Turnstile: verify once, then all paid AI calls are allowed for a while =====
+const TS = { enabled: false, sitekey: "", configDone: false, scriptReady: false, widget: null, verified: false, waiters: [] };
+
+async function tsInit() {
+  const local = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  try {
+    const cfg = await (await fetch("/api/config")).json();  // plain fetch: /api/config is public
+    TS.enabled = !!cfg.turnstile_enabled && !local;         // local dev bypasses (backend does too)
+    TS.sitekey = cfg.turnstile_site_key || "";
+  } catch (e) { TS.enabled = false; }
+  TS.configDone = true;
+  tsMaybeRender();
+}
+// Turnstile's async script calls this when it's ready (see index.html script tag)
+window.onTurnstileReady = function () { TS.scriptReady = true; tsMaybeRender(); };
+
+function tsMaybeRender() {
+  if (!TS.configDone || !TS.scriptReady || !TS.enabled) return;
+  if (!TS.sitekey || !window.turnstile || TS.widget !== null) return;
+  const gate = $("#turnstile-gate");
+  if (gate) gate.classList.remove("hidden");
+  TS.widget = window.turnstile.render("#turnstile-container", {
+    sitekey: TS.sitekey,
+    callback: tsOnToken,
+    "error-callback": () => tsFinish(false),
+    "expired-callback": () => { TS.verified = false; },
+  });
+}
+
+async function tsOnToken(token) {
+  try {
+    const r = await fetch("/api/verify", {  // plain fetch: verify sets the cookie
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }),
+    });
+    tsFinish(r.ok);
+  } catch (e) { tsFinish(false); }
+}
+
+function tsFinish(ok) {
+  TS.verified = ok;
+  const gate = $("#turnstile-gate");
+  if (gate && ok) gate.classList.add("hidden");
+  const ws = TS.waiters; TS.waiters = [];
+  ws.forEach(fn => fn(ok));
+}
+
+// resolves once the visitor is verified (or immediately if protection is off / already verified)
+function tsEnsure() {
+  return new Promise((resolve) => {
+    if (!TS.enabled || TS.verified) return resolve(true);
+    TS.waiters.push(resolve);
+    if (TS.widget !== null && window.turnstile) { try { window.turnstile.reset(TS.widget); } catch (e) {} }
+    else tsMaybeRender();
+    setTimeout(() => {  // never hang the UI forever
+      const i = TS.waiters.indexOf(resolve);
+      if (i !== -1) { TS.waiters.splice(i, 1); resolve(false); }
+    }, 20000);
+  });
+}
+
+// use for every PAID/protected API call: make sure we're verified, retry once on a 403
+async function apiFetch(url, opts) {
+  await tsEnsure();
+  let res = await fetch(url, opts);
+  if (res.status === 403) {
+    let needsVerify = false;
+    try { needsVerify = (await res.clone().json()).detail === "verification_required"; } catch (e) {}
+    if (needsVerify) { TS.verified = false; await tsEnsure(); res = await fetch(url, opts); }
+  }
+  return res;
+}
+
+tsInit();

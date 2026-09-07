@@ -6,16 +6,20 @@ Then open http://127.0.0.1:8000/  (UI)  or  /docs  (API).
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
+import time
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app.config import settings
 from app.llm.provider import get_provider
 from app.llm.qa import answer_question, fetch_studies
 from app.models.schemas import LiteratureRef, RepurposingReport
@@ -39,10 +43,93 @@ async def _no_cache(request, call_next):
     return response
 
 
+# ---- Bot protection (Cloudflare Turnstile) -------------------------------
+# The paid AI endpoints are gated: a visitor solves Turnstile once, we set a short-lived signed
+# cookie, and every protected call checks it. Protection is active only when TURNSTILE_SECRET is
+# set (so local dev without it stays open); loopback requests are always allowed for local testing.
+_HUMAN_COOKIE = "rp_human"
+_LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
+_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def _sign_human(secret: str, ttl_hours: int) -> str:
+    exp = str(int(time.time()) + ttl_hours * 3600)
+    sig = hmac.new(secret.encode(), exp.encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _valid_human_cookie(value: str | None, secret: str) -> bool:
+    if not value or "." not in value:
+        return False
+    exp_str, _, sig = value.rpartition(".")
+    try:
+        if int(exp_str) < time.time():
+            return False
+    except ValueError:
+        return False
+    expected = hmac.new(secret.encode(), exp_str.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected)
+
+
+def require_human(request: Request) -> None:
+    """Dependency: block a protected call unless the visitor has passed Turnstile recently."""
+    secret = settings.turnstile_secret
+    if not secret:
+        return  # protection disabled (no secret configured)
+    client = (request.client.host if request.client else "") or ""
+    if client in _LOOPBACK:
+        return  # local development bypass
+    if _valid_human_cookie(request.cookies.get(_HUMAN_COOKIE), secret):
+        return
+    raise HTTPException(status_code=403, detail="verification_required")
+
+
 # ---- API -----------------------------------------------------------------
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def config() -> dict:
+    """Public config the frontend needs (the Turnstile SITE key is meant to be public)."""
+    return {
+        "turnstile_site_key": settings.turnstile_site_key or "",
+        "turnstile_enabled": bool(settings.turnstile_secret),
+    }
+
+
+class VerifyRequest(BaseModel):
+    token: str
+
+
+@app.post("/api/verify")
+def verify_turnstile(req: VerifyRequest, request: Request, response: Response) -> dict:
+    """Validate a Turnstile token with Cloudflare, then set a short-lived human cookie."""
+    secret = settings.turnstile_secret
+    if not secret:
+        return {"ok": True, "disabled": True}
+    from app.clients.base import make_client
+    client_ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "")
+    try:
+        with make_client() as http:
+            r = http.post(_SITEVERIFY_URL, data={"secret": secret, "response": req.token, "remoteip": client_ip}, timeout=10.0)
+            data = r.json()
+    except Exception:
+        raise HTTPException(status_code=502, detail="verify_unreachable")
+    if not data.get("success"):
+        raise HTTPException(status_code=403, detail="verification_failed")
+    allow = settings.turnstile_hostnames
+    if allow:
+        hosts = {h.strip() for h in allow.split(",") if h.strip()}
+        if hosts and data.get("hostname") not in hosts:
+            raise HTTPException(status_code=403, detail="bad_hostname")
+    response.set_cookie(
+        _HUMAN_COOKIE, _sign_human(secret, settings.turnstile_ttl_hours),
+        max_age=settings.turnstile_ttl_hours * 3600, httponly=True, samesite="lax",
+        secure=(request.url.scheme == "https"), path="/",
+    )
+    return {"ok": True}
 
 
 # cache results per query so the same search returns the SAME result every time (the pipeline
@@ -51,7 +138,7 @@ _REPORT_CACHE: "OrderedDict[str, RepurposingReport]" = OrderedDict()
 _CACHE_MAX = 64
 
 
-@app.get("/api/repurpose", response_model=RepurposingReport)
+@app.get("/api/repurpose", response_model=RepurposingReport, dependencies=[Depends(require_human)])
 def repurpose(q: str = Query(..., min_length=2, description="Disease, target, or plain-language goal"),
               refresh: bool = Query(False, description="Recompute instead of using the cached result")) -> RepurposingReport:
     key = q.strip().lower()
@@ -77,7 +164,7 @@ def _studies(drug: str, topic: str) -> list[LiteratureRef]:
     return refs
 
 
-@app.get("/api/studies")
+@app.get("/api/studies", dependencies=[Depends(require_human)])
 def studies(drug: str = Query(..., min_length=1), topic: str = Query("")) -> dict[str, list[LiteratureRef]]:
     try:
         return {"studies": _studies(drug, topic)}
@@ -92,7 +179,7 @@ class AskRequest(BaseModel):
     topic: str = ""
 
 
-@app.post("/api/ask")
+@app.post("/api/ask", dependencies=[Depends(require_human)])
 def ask(req: AskRequest) -> dict:
     provider = get_provider()
     try:
@@ -165,7 +252,7 @@ def _fallback_explanation(req: "ExplainRequest") -> str:
             f"{safe}%, confidence {conf}%.")
 
 
-@app.post("/api/explain")
+@app.post("/api/explain", dependencies=[Depends(require_human)])
 def explain(req: ExplainRequest) -> dict:
     from app.textutil import no_em_dashes
     provider = get_provider()
@@ -202,7 +289,7 @@ class EvidenceRequest(BaseModel):
     label: str = ""
 
 
-@app.post("/api/evidence")
+@app.post("/api/evidence", dependencies=[Depends(require_human)])
 def evidence(req: EvidenceRequest) -> dict:
     """'Learn More' from a badge: real PubMed studies + an explanation tailored to THAT badge."""
     from app.textutil import no_em_dashes
@@ -414,7 +501,7 @@ def _study_context(message: str) -> tuple[str | None, str | None]:
         ncbi.close()
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(require_human)])
 def chat(req: ChatRequest) -> dict:
     """Proxy to the custom n8n 'RePurpose Pharma Chatbot' webhook (keeps the URL server-side, no CORS)."""
     from app.config import settings
@@ -584,7 +671,7 @@ def _fallback_summary(req: DrugInfoRequest, description: str) -> str:
     return s
 
 
-@app.post("/api/drug")
+@app.post("/api/drug", dependencies=[Depends(require_human)])
 def drug(req: DrugInfoRequest) -> dict:
     from app.clients.druginfo import drug_profile, wiki_image
     from app.textutil import no_em_dashes
