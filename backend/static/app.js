@@ -298,12 +298,13 @@ function renderReport(report, query) {
     rpt.appendChild(el("p", "empty", "No established treatments matched."));
   }
 
-  // Repurposing
-  rpt.appendChild(sectionTitle("Repurposing & in-development candidates",
-    "Drugs from other uses, and real investigational agents in active clinical trials, promising but not yet established here."));
+  // Repurposing (with a tunable well-established <-> under-explored sort control)
+  const repSection = sectionTitle("Repurposing & in-development candidates",
+    "Drugs from other uses, and real investigational agents in active clinical trials, promising but not yet established here.");
+  rpt.appendChild(repSection);
   const repur = report.repurposing_candidates || [];
   if (repur.length) {
-    renderDrugGrid(rpt, repur, 9, false);  // show 9, rest behind "Show all"
+    buildRepurposingSection(rpt, repur, repSection);
   } else {
     rpt.appendChild(el("p", "empty", "No repurposing candidates found."));
   }
@@ -339,6 +340,69 @@ function renderDrugGrid(parent, cands, cap, isExisting) {
     btn.onclick = () => { cands.slice(cap).forEach(c => grid.appendChild(drugCard(c, false, isExisting))); btn.remove(); };
     parent.appendChild(btn);
   }
+}
+
+// ---- repurposing sort control (well-established <-> under-explored) ----
+const REPUR_CAP = 9;  // initial visible count; the fold resets to this after every Sort
+
+// novelty weight by provenance (schema `source`): AI-proposed > trial-only > database
+function _sourceWeight(source) {
+  if (source === "ai") return 1.0;
+  if (source === "clinical_trials") return 0.6;
+  return 0.0;  // "database" (and anything else, e.g. promoted "established")
+}
+
+// blended ranking score; alpha=0 -> pure confidence, alpha=1 -> pure novelty
+function _repurDisplayScore(c, alpha) {
+  const phase = (typeof c.max_phase === "number") ? c.max_phase : 0;  // null/unknown -> earliest
+  const novelty = 0.5 * (1 - phase / 4) + 0.5 * _sourceWeight(c.source);
+  const conf = (typeof c.confidence === "number") ? c.confidence : 0;
+  return alpha * novelty + (1 - alpha) * conf;
+}
+
+function _repurReadout(v) {
+  if (v <= 0) return "Default order (confidence first)";
+  if (v < 0.34) return `Leaning well-established · α ${v.toFixed(2)}`;
+  if (v < 0.67) return `Balanced blend · α ${v.toFixed(2)}`;
+  return `Leaning under-explored · α ${v.toFixed(2)}`;
+}
+
+// Renders the slider + Sort button, then the candidate grid. The list is shown in its EXACT
+// incoming order until the user moves the slider AND clicks Sort (no auto re-sort on drag).
+function buildRepurposingSection(parent, cands, sectionEl) {
+  const controls = el("div", "repur-sort");
+  controls.innerHTML =
+    '<div class="repur-sort-slider">'
+    + '<input id="repur-alpha" class="repur-range" type="range" min="0" max="1" step="0.01" value="0"'
+    + ' aria-label="Sort emphasis from well-established to under-explored" />'
+    + '<div class="repur-sort-ends">'
+    + '<div class="repur-end"><strong>Well-established</strong><span>Prioritize approved, high-confidence options</span></div>'
+    + '<div class="repur-end right"><strong>Under-explored</strong><span>Surface early-stage and AI-proposed leads with less accumulated evidence</span></div>'
+    + '</div>'
+    + '<div class="repur-readout" id="repur-readout">' + esc(_repurReadout(0)) + '</div>'
+    + '</div>'
+    + '<button id="repur-sort-btn" class="btn btn-primary repur-sort-btn" type="button">Sort</button>';
+  parent.appendChild(controls);
+
+  const host = el("div", "repur-list");
+  parent.appendChild(host);
+  renderDrugGrid(host, cands, REPUR_CAP, false);  // initial: unchanged order
+
+  const slider = controls.querySelector("#repur-alpha");
+  const readout = controls.querySelector("#repur-readout");
+  // dragging only updates the slider's own position/readout — it does NOT re-sort
+  slider.addEventListener("input", () => {
+    controls.style.setProperty("--alpha", slider.value);
+    readout.textContent = _repurReadout(parseFloat(slider.value) || 0);
+  });
+
+  controls.querySelector("#repur-sort-btn").addEventListener("click", () => {
+    const alpha = parseFloat(slider.value) || 0;
+    const sorted = cands.slice().sort((a, b) => _repurDisplayScore(b, alpha) - _repurDisplayScore(a, alpha));
+    host.innerHTML = "";
+    renderDrugGrid(host, sorted, REPUR_CAP, false);   // re-render + reset fold to REPUR_CAP
+    (sectionEl || controls).scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 // map raw stage codes to readable English

@@ -250,6 +250,23 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 /* "Show all N" toggle under a drug section */
 .show-more { margin: 14px auto 0; display: block; }
 
+/* tunable sort control for the repurposing candidate list */
+.repur-sort { display: flex; align-items: center; gap: 18px; margin: 0 0 20px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+.repur-sort-slider { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.repur-range { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; height: 6px; }
+.repur-sort-ends { display: flex; justify-content: space-between; gap: 16px; }
+.repur-end { display: flex; flex-direction: column; max-width: 46%; }
+.repur-end.right { text-align: right; align-items: flex-end; }
+.repur-end strong { font-size: 13.5px; color: var(--ink); font-weight: 700; }
+.repur-end span { font-size: 12px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+.repur-readout { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); text-align: center; }
+.repur-sort-btn { flex-shrink: 0; align-self: center; padding: 12px 30px; }
+@media (max-width: 640px) {
+  .repur-sort { flex-direction: column; align-items: stretch; gap: 14px; }
+  .repur-sort-btn { width: 100%; }
+}
+
 /* docked chat popup (top-right button) — floats over the page so you can still see results */
 .chat-modal { position: fixed; bottom: 22px; right: 22px; z-index: 95;
   width: 400px; max-width: calc(100vw - 32px); height: 580px; max-height: calc(100vh - 110px);
