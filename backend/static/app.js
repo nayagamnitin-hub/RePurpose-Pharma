@@ -742,6 +742,27 @@ function targetChip(t) {
   return c;
 }
 
+// UniProt function text mixes prose with inline "(PubMed:...)" / "(By similarity)" clutter that
+// reads inconsistently. Pull the PMIDs out for a tidy fold-down, and clean the prose.
+function formatProteinFunction(text) {
+  if (!text) return { prose: "", pmids: [] };
+  const pmids = [];
+  (text.match(/PubMed:\s*\d+/gi) || []).forEach(s => {
+    const id = s.replace(/\D/g, "");
+    if (id && pmids.indexOf(id) === -1) pmids.push(id);
+  });
+  let prose = text
+    .replace(/\s*\(\s*PubMed:[^)]*\)/gi, "")     // drop (PubMed: ...) citation groups
+    .replace(/\s*\(By similarity\)/gi, "")        // drop inference qualifiers
+    .replace(/\s*\(Probable\)/gi, "")
+    .replace(/\s*\(By similarity,[^)]*\)/gi, "")
+    .replace(/\s+([.,;:])/g, "$1")               // tidy space-before-punctuation
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (prose && !/[.!?]$/.test(prose)) prose += ".";
+  return { prose, pmids };
+}
+
 async function openProtein(symbol) {
   const body = $("#explain-body");
   $("#explain-overlay").classList.remove("hidden");
@@ -751,13 +772,20 @@ async function openProtein(symbol) {
     const res = await apiFetch(`/api/protein?symbol=${encodeURIComponent(symbol)}`);
     const d = await res.json();
     const name = d.protein_name ? `<p class="protein-sub">${esc(d.protein_name)}</p>` : "";
-    const fn = d.function
-      ? `<p>${esc(d.function)}</p>`
+    const fn = formatProteinFunction(d.function);
+    const prose = fn.prose
+      ? `<p class="protein-fn">${esc(fn.prose)}</p>`
       : `<p class="muted-sm">No description is available for ${esc(symbol)} right now.</p>`;
+    let cites = "";
+    if (fn.pmids.length) {
+      const items = fn.pmids.map(id =>
+        `<li><a href="https://pubmed.ncbi.nlm.nih.gov/${esc(id)}/" target="_blank" rel="noopener">PMID ${esc(id)}</a></li>`).join("");
+      cites = `<details class="protein-cites"><summary>📄 Cited PubMed studies (${fn.pmids.length})</summary><ul>${items}</ul></details>`;
+    }
     const link = d.uniprot_id
       ? `<p class="protein-link"><a href="https://www.uniprot.org/uniprotkb/${esc(d.uniprot_id)}/entry" target="_blank" rel="noopener">View full entry on UniProt →</a></p>`
       : "";
-    body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3>${name}${fn}${link}`;
+    body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3>${name}<div class="protein-body">${prose}${cites}</div>${link}`;
   } catch (e) {
     body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3><p class="muted-sm">Couldn't load a summary right now. Please try again.</p>`;
   }

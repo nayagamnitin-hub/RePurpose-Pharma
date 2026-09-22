@@ -416,6 +416,18 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 .explain-modal { max-width: 460px; }
 .explain-title { margin: 0 0 4px; font-size: 20px; font-weight: 800; color: var(--accent-dark); letter-spacing: -.01em; }
 .protein-sub { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.protein-body { max-height: 46vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.protein-fn { font-size: 14px; line-height: 1.6; margin: 0; color: var(--ink); }
+.protein-cites { margin-top: 12px; }
+.protein-cites summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--accent-dark);
+  list-style: none; user-select: none; padding: 6px 0; border-top: 1px solid var(--line); }
+.protein-cites summary::-webkit-details-marker { display: none; }
+.protein-cites summary::before { content: "▸ "; display: inline-block; transition: transform .15s; }
+.protein-cites[open] summary::before { content: "▾ "; }
+.protein-cites ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; }
+.protein-cites li a { display: inline-block; background: var(--accent-soft); color: var(--accent-dark);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; text-decoration: none; }
+.protein-cites li a:hover { background: var(--accent); color: #fff; }
 .protein-link { margin-top: 12px; font-size: 13px; }
 .explain-label { font-size: 21px; margin: 4px 0 12px; letter-spacing: -.01em; }
 #explain-text { font-size: 15px; line-height: 1.6; }
