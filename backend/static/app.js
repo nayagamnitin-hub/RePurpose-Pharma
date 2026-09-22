@@ -269,7 +269,7 @@ function renderReport(report, query) {
     "The biological targets (proteins) involved in this condition. Established treatments act on these, " +
     "and repurposing candidates are matched against them."));
   const chips = el("div", "chips");
-  (report.targets || []).slice(0, 10).forEach(t => chips.appendChild(el("span", "chip", esc(t.symbol))));
+  (report.targets || []).slice(0, 10).forEach(t => chips.appendChild(targetChip(t)));
   head.appendChild(chips);
   rpt.appendChild(head);
 
@@ -310,13 +310,9 @@ function renderReport(report, query) {
   }
 
   // Targets
-  rpt.appendChild(sectionTitle("Targets explored", ""));
+  rpt.appendChild(sectionTitle("Targets explored", "Click any protein to see what it does."));
   const tchips = el("div", "chips");
-  (report.targets || []).forEach(t => {
-    const c = el("span", "chip", esc(t.symbol));
-    if (t.protein_function) c.title = t.protein_function;
-    tchips.appendChild(c);
-  });
+  (report.targets || []).forEach(t => tchips.appendChild(targetChip(t)));
   rpt.appendChild(tchips);
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -608,6 +604,35 @@ function addLearnMore(c, isExisting, label) {
 function closeExplain() {
   $("#explain-overlay").classList.add("hidden");
   document.body.style.overflow = "";
+}
+
+// a clickable target-protein chip -> quick "what is this protein" popup
+function targetChip(t) {
+  const c = el("span", "chip chip-target", esc(t.symbol) + ' <span class="chip-i">ⓘ</span>');
+  if (t.protein_function) c.title = t.protein_function;  // keep the hover tooltip for enriched targets
+  c.onclick = () => openProtein(t.symbol);
+  return c;
+}
+
+async function openProtein(symbol) {
+  const body = $("#explain-body");
+  $("#explain-overlay").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3><p class="muted-sm">Looking up what ${esc(symbol)} does…</p>`;
+  try {
+    const res = await apiFetch(`/api/protein?symbol=${encodeURIComponent(symbol)}`);
+    const d = await res.json();
+    const name = d.protein_name ? `<p class="protein-sub">${esc(d.protein_name)}</p>` : "";
+    const fn = d.function
+      ? `<p>${esc(d.function)}</p>`
+      : `<p class="muted-sm">No description is available for ${esc(symbol)} right now.</p>`;
+    const link = d.uniprot_id
+      ? `<p class="protein-link"><a href="https://www.uniprot.org/uniprotkb/${esc(d.uniprot_id)}/entry" target="_blank" rel="noopener">View full entry on UniProt →</a></p>`
+      : "";
+    body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3>${name}${fn}${link}`;
+  } catch (e) {
+    body.innerHTML = `<h3 class="explain-title">${esc(symbol)}</h3><p class="muted-sm">Couldn't load a summary right now. Please try again.</p>`;
+  }
 }
 
 function metric(label, value, cls) {

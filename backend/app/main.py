@@ -172,6 +172,37 @@ def studies(drug: str = Query(..., min_length=1), topic: str = Query("")) -> dic
         return {"studies": []}
 
 
+# quick protein summaries for the clickable target chips (UniProt only; cached, no LLM cost)
+_PROTEIN_CACHE: "OrderedDict[str, dict]" = OrderedDict()
+
+
+@app.get("/api/protein", dependencies=[Depends(require_human)])
+def protein(symbol: str = Query(..., min_length=1, max_length=40)) -> dict:
+    """What a target protein is / does, in one UniProt lookup (cheap, cached)."""
+    key = symbol.strip().upper()
+    if key in _PROTEIN_CACHE:
+        _PROTEIN_CACHE.move_to_end(key)
+        return _PROTEIN_CACHE[key]
+    from app.clients.uniprot import UniProtClient
+    out = {"symbol": key, "protein_name": None, "function": None, "uniprot_id": None}
+    try:
+        with UniProtClient() as up:
+            info = up.lookup_by_gene(key)
+        if info:
+            out = {
+                "symbol": key,
+                "protein_name": info.get("protein_name"),
+                "function": info.get("function") or None,
+                "uniprot_id": info.get("uniprot_id"),
+            }
+    except Exception:
+        pass
+    _PROTEIN_CACHE[key] = out
+    if len(_PROTEIN_CACHE) > 256:
+        _PROTEIN_CACHE.popitem(last=False)
+    return out
+
+
 class AskRequest(BaseModel):
     drug: str
     question: str
