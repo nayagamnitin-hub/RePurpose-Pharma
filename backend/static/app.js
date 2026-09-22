@@ -216,9 +216,9 @@ async function runSearch(query) {
   $("#results").classList.remove("hidden");
   $("#report").classList.add("hidden");
   $("#loading").classList.remove("hidden");
-  $("#loading-text").textContent = `Analyzing “${query}” across Open Targets, ClinicalTrials.gov, UniProt & PubMed…`;
   window.scrollTo({ top: 0, behavior: "smooth" });
 
+  const stopLoading = startLoadingExperience();   // rotating status + a game while it works
   try {
     const res = await apiFetch(`/api/repurpose?q=${encodeURIComponent(query)}`);
     if (!res.ok) {
@@ -233,12 +233,140 @@ async function runSearch(query) {
     $("#report").innerHTML = `<button class="btn btn-ghost back-btn" onclick="goHome()">← New search</button>
       <div class="summary-card"><h3>Couldn't complete that search</h3>
       <p class="muted-sm">${esc(e.message)}. This is often a brief upstream API hiccup. Try Analyze again.</p></div>`;
+  } finally {
+    stopLoading();
   }
 }
 
 function goHome() {
   showLandingSections();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ---- loading experience: rotating status, then a game to pass the time ----
+const LOADING_MSGS = [
+  "Interpreting your query…",
+  "Mapping the biology on Open Targets…",
+  "Finding drugs that act on those targets…",
+  "Searching active clinical trials…",
+  "Proposing novel repurposing leads…",
+  "Scoring effectiveness and safety…",
+  "Reading PubMed evidence…",
+  "Writing your plain-English summary…",
+];
+
+// starts the animated status + (after a few seconds) a Snake game; returns a cleanup function
+function startLoadingExperience() {
+  const box = $("#loading");
+  const textEl = $("#loading-text");
+  let i = 0;
+  textEl.textContent = LOADING_MSGS[0];
+  textEl.classList.add("loading-shimmer");
+  const rot = setInterval(() => {
+    i = (i + 1) % LOADING_MSGS.length;
+    textEl.style.opacity = "0";
+    setTimeout(() => { textEl.textContent = LOADING_MSGS[i]; textEl.style.opacity = "1"; }, 250);
+  }, 2600);
+
+  let gameEl = null;
+  const gameTimer = setTimeout(() => {
+    box.classList.add("has-game");
+    gameEl = buildSnakeGame();
+    box.appendChild(gameEl);
+  }, 4000);  // deep searches run long, so offer a game after a short wait
+
+  return function cleanup() {
+    clearInterval(rot);
+    clearTimeout(gameTimer);
+    textEl.classList.remove("loading-shimmer");
+    textEl.style.opacity = "";
+    box.classList.remove("has-game");
+    if (gameEl) { if (gameEl._destroy) gameEl._destroy(); gameEl.remove(); }
+  };
+}
+
+// self-contained Snake game (no libraries, no copyrighted assets)
+function buildSnakeGame() {
+  const card = el("div", "wait-game");
+  card.innerHTML =
+    '<div class="wait-game-head">'
+    + '<span class="wait-game-title">🐍 Snake — a little something while you wait</span>'
+    + '<span class="wait-game-score">Score <b class="snake-score">0</b></span>'
+    + '</div>'
+    + '<canvas class="snake-canvas" width="320" height="320" aria-label="Snake game"></canvas>'
+    + '<div class="wait-game-foot">'
+    + '<span class="wait-game-hint">Arrow keys / WASD, or swipe</span>'
+    + '<button type="button" class="btn btn-ghost wait-game-btn snake-restart">Restart</button>'
+    + '</div>';
+
+  const canvas = card.querySelector(".snake-canvas");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = card.querySelector(".snake-score");
+  const CELL = 16, N = canvas.width / CELL;
+  const css = (v, fb) => { const x = getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return x || fb; };
+  let snake, dir, nextDir, food, score, dead, loop;
+
+  const placeFood = () => {
+    while (true) {
+      const f = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) };
+      if (!snake.some(s => s.x === f.x && s.y === f.y)) { food = f; return; }
+    }
+  };
+  const reset = () => {
+    snake = [{ x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
+    dir = { x: 1, y: 0 }; nextDir = dir; score = 0; dead = false;
+    scoreEl.textContent = "0"; placeFood(); draw();
+  };
+  const cell = (x, y) => ctx.fillRect(x * CELL + 2, y * CELL + 2, CELL - 4, CELL - 4);
+  const draw = () => {
+    ctx.fillStyle = css("--surface", "#fffdf8"); ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = css("--accent", "#b96b3c"); cell(food.x, food.y);
+    snake.forEach((s, idx) => { ctx.fillStyle = idx === 0 ? css("--accent-dark", "#8f4f29") : css("--ink", "#211c15"); cell(s.x, s.y); });
+    if (dead) {
+      ctx.fillStyle = "rgba(33,28,21,.74)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#fffdf8"; ctx.textAlign = "center";
+      ctx.font = "bold 22px Inter, system-ui, sans-serif"; ctx.fillText("Game over", canvas.width / 2, canvas.height / 2 - 6);
+      ctx.font = "14px Inter, system-ui, sans-serif"; ctx.fillText("Score " + score + " · tap Restart", canvas.width / 2, canvas.height / 2 + 20);
+    }
+  };
+  const step = () => {
+    if (dead) return;
+    dir = nextDir;
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    if (head.x < 0 || head.y < 0 || head.x >= N || head.y >= N || snake.some(s => s.x === head.x && s.y === head.y)) {
+      dead = true; draw(); return;
+    }
+    snake.unshift(head);
+    if (head.x === food.x && head.y === food.y) { score++; scoreEl.textContent = String(score); placeFood(); }
+    else snake.pop();
+    draw();
+  };
+  const setDir = (nx, ny) => { if (nx === -dir.x && ny === -dir.y) return; nextDir = { x: nx, y: ny }; };
+  const onKey = (e) => {
+    const k = e.key; let hit = true;
+    if (k === "ArrowUp" || k === "w" || k === "W") setDir(0, -1);
+    else if (k === "ArrowDown" || k === "s" || k === "S") setDir(0, 1);
+    else if (k === "ArrowLeft" || k === "a" || k === "A") setDir(-1, 0);
+    else if (k === "ArrowRight" || k === "d" || k === "D") setDir(1, 0);
+    else hit = false;
+    if (hit) e.preventDefault();
+  };
+  document.addEventListener("keydown", onKey);
+
+  let sx = 0, sy = 0;
+  canvas.addEventListener("touchstart", (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
+  canvas.addEventListener("touchend", (e) => {
+    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+    if (Math.abs(dx) > Math.abs(dy)) setDir(dx > 0 ? 1 : -1, 0); else setDir(0, dy > 0 ? 1 : -1);
+  }, { passive: true });
+
+  card.querySelector(".snake-restart").addEventListener("click", reset);
+  reset();
+  loop = setInterval(step, 130);
+
+  card._destroy = () => { clearInterval(loop); document.removeEventListener("keydown", onKey); };
+  return card;
 }
 
 // ---- rendering ----
