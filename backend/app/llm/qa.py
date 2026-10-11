@@ -21,7 +21,10 @@ _SYSTEM = (
     "prefix that with 'Mechanistic reasoning:' so it is not mistaken for cited evidence. Always "
     "distinguish established clinical evidence from hypothesis, and flag where data is missing. "
     "Never fabricate specific numbers, trials, or PMIDs. This is research hypothesis generation, "
-    "not medical advice. NEVER use em dashes or en dashes; use commas, periods, or 'and'."
+    "not medical advice. NEVER use em dashes or en dashes; use commas, periods, or 'and'. "
+    "This renders in a narrow panel on phones: prefer short paragraphs and bullet points; use a "
+    "Markdown table ONLY for a genuine comparison, and keep it small (at most 3 columns and a few "
+    "words per cell). For anything longer than a few words, use bullets instead of a table."
 )
 
 

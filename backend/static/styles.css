@@ -351,12 +351,19 @@ em { font-style: normal; color: var(--accent-dark); font-weight: 600; }
 .ai-msg h3:first-child, .ai-msg h4:first-child, .ask-answer h3:first-child, .ask-answer h4:first-child { margin-top: 0; }
 .ai-msg li { margin: 2px 0; }
 
-/* comparison tables */
+/* comparison tables: let them size to content and scroll sideways, instead of squishing columns
+   so narrow that every word breaks character-by-character */
 .ai-table-wrap { overflow-x: auto; margin: 10px 0; -webkit-overflow-scrolling: touch; }
-.ai-msg table, .ask-answer table { border-collapse: collapse; width: 100%; font-size: 13.5px; white-space: normal; }
-.ai-msg th, .ai-msg td, .ask-answer th, .ask-answer td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+.ai-msg table, .ask-answer table { border-collapse: collapse; width: auto; min-width: 100%; font-size: 13px; }
+.ai-msg th, .ai-msg td, .ask-answer th, .ask-answer td {
+  border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top;
+  overflow-wrap: normal; word-break: normal; hyphens: none; min-width: 84px; max-width: 300px; }
 .ai-msg thead th, .ask-answer thead th { background: var(--bg); color: var(--accent-dark); font-weight: 700; }
 .ai-msg tbody tr:nth-child(even) td { background: rgba(0,0,0,.02); }
+@media (max-width: 560px) {
+  .ai-msg table, .ask-answer table { font-size: 12px; }
+  .ai-msg th, .ai-msg td, .ask-answer th, .ask-answer td { padding: 6px 8px; min-width: 72px; max-width: 220px; }
+}
 @keyframes msgIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 
 /* typing indicator */

@@ -427,8 +427,9 @@ _CHAT_SYS = (
     "medical advice. Match the depth of the question: for deep or technical questions, reason "
     "mechanistically and thoroughly; for simple ones, be crisp. Format in clean Markdown: '## ' "
     "topic and '### ' sub-topic headings, '**bold**' key terms, '- ' bullets, and a '|'-pipe table "
-    "with a '---' separator when comparing options. Use the conversation to resolve references like "
-    "'it' or 'that stack'. Stay on medicine/biology/health; if a request is genuinely unrelated, "
+    "with a '---' separator when comparing options. Keep tables SMALL (at most 3-4 columns, a few "
+    "words per cell) so they read on a phone; use bullets instead when entries would be long. Use the "
+    "conversation to resolve references like 'it' or 'that stack'. Stay on medicine/biology/health; if a request is genuinely unrelated, "
     "briefly redirect. Never fabricate citations. Finish every sentence and end substantive answers "
     "with one sharp follow-up question.\n\n" + _SAFETY_RULE
 )
@@ -597,8 +598,10 @@ def chat(req: ChatRequest) -> dict:
         "deep/technical questions reason mechanistically (receptors, pathways, PK: onset, Tmax, "
         "half-life, CYP, bioavailability) and cover EVERY angle raised; don't oversimplify. Format in "
         "Markdown: '## ' topic and '### ' sub-topic headings, '**bold**' key terms, '- ' bullets, and "
-        "a '|'-pipe table with a '---' separator when comparing options. Resolve references (it/that/"
-        "this) from the conversation. Finish every sentence and end with one sharp follow-up question."
+        "a '|'-pipe table with a '---' separator when comparing options. Keep tables SMALL so they read "
+        "well on a phone: at most 3-4 columns and a few words per cell; if entries would be long, use "
+        "bullets instead of a table. Resolve references (it/that/this) from the conversation. Finish "
+        "every sentence and end with one sharp follow-up question."
     )
     parts.append(_SAFETY_RULE)
     message = "\n\n".join(parts)

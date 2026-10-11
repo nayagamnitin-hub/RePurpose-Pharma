@@ -610,6 +610,10 @@ function drugCard(c, featured, isExisting) {
   const studiesBox = el("div", "studies");
   const askBox = el("div", "ask-box hidden");
   card.append(studiesBox, askBox);
+  // keep clicks inside the studies / ask areas from bubbling to the card (which would open the
+  // detail modal and hijack typing/asking, especially on touch screens)
+  studiesBox.addEventListener("click", (e) => e.stopPropagation());
+  askBox.addEventListener("click", (e) => e.stopPropagation());
 
   studiesBtn.onclick = () => loadStudies(c.name, studiesBox, studiesBtn);
   askBtn.onclick = () => {
