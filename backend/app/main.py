@@ -213,10 +213,22 @@ class AskRequest(BaseModel):
 @app.post("/api/ask", dependencies=[Depends(require_human)])
 def ask(req: AskRequest) -> dict:
     provider = get_provider()
+    answer, refs = None, []
     try:
         refs = _studies(req.drug, req.topic)
-        answer = answer_question(req.question, [req.drug], refs, provider, context=req.context)
+        if provider.live:
+            answer = answer_question(req.question, [req.drug], refs, provider, context=req.context)
     except Exception:
+        answer = None
+    # If the app's own model isn't configured/available, fall back to the n8n chatbot (which has its
+    # own working model credential), so per-drug Ask works regardless of the app's LLM env vars.
+    if not answer:
+        pmids = ", ".join(r.pmid for r in refs[:6])
+        fallback_q = (f"About the drug {req.drug}: {req.question}\n"
+                      f"Context: {req.context or 'drug repurposing research'}."
+                      + (f" Relevant PubMed PMIDs: {pmids}." if pmids else ""))
+        answer = _n8n_reply(fallback_q, session_id=f"ask-{req.drug[:40]}")
+    if not answer:
         answer = "Sorry, the AI could not answer just now (a brief service hiccup). Please try again."
     return {"answer": answer, "live": provider.live}
 
@@ -444,6 +456,25 @@ def _direct_llm_reply(message: str) -> str | None:
         raw = provider.complete(_CHAT_SYS, message, temperature=0.4)
         reply = _strip_thinking(raw).strip()
         return reply or None
+    except Exception:
+        return None
+
+
+def _n8n_reply(message: str, session_id: str = "ask") -> str | None:
+    """Ask the n8n chatbot webhook (its own working model credential). Used as a fallback for the
+    app's own LLM features so they keep working even if the app's provider key is misconfigured."""
+    url = settings.n8n_webhook_url
+    if not url:
+        return None
+    from app.clients.base import make_client
+    try:
+        with make_client() as http:
+            r = http.post(url, json={"message": message, "sessionId": session_id}, timeout=120.0)
+            r.raise_for_status()
+            data = r.json()
+        raw = data.get("reply") or data.get("output") or data.get("text") or ""
+        reply = _strip_thinking(raw).strip()
+        return reply if reply and reply != "(the assistant returned no text)" else None
     except Exception:
         return None
 
